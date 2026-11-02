@@ -1,0 +1,14 @@
+{
+  "name": "port-solara",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Port Solara - open-world 3D game starring Arturs & Paula (school project)",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch"
+  },
+  "devDependencies": {
+    "esbuild": "0.24.0",
+    "three": "0.170.0"
+  }
+}
