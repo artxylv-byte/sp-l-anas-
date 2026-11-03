@@ -6,7 +6,7 @@ export class Input {
     this.pressed = new Set(); // one-shot presses this frame
     this.look = { x: 0, y: 0 };
     this.stick = { x: 0, y: 0 };
-    this.touchBtns = { sprint: false, jump: false, brake: false };
+    this.touchBtns = { sprint: false, jump: false, brake: false, punch: false };
     this.isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
     this.enabled = false;
 
@@ -23,6 +23,7 @@ export class Input {
     let dragging = false;
     canvas.addEventListener('mousedown', (e) => {
       if (!this.enabled || this.isTouch) return;
+      if (e.button === 0 && document.pointerLockElement === canvas) this.pressed.add('mouse:left');
       dragging = true;
       if (canvas.requestPointerLock && document.pointerLockElement !== canvas) canvas.requestPointerLock();
     });

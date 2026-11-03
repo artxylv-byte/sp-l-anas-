@@ -167,6 +167,7 @@ export class MHuman {
   constructor(look, { detail = 'high' } = {}) {
     this.detail = detail;
     this.root = new THREE.Group();
+    this.root.rotation.order = 'YXZ'; // yaw first, then tipping over (falls) about the body's own axis
     this.anim = { speed: 0, air: false, sit: false, lookAt: null, lookAtCamera: false, turn: 0 };
     this.setAppearance(look);
   }
@@ -238,7 +239,8 @@ export class MHuman {
     const skinInfo = s.m.skins[tone + (female ? '_female' : '_male')];
     const bodyW = { si: new Uint16Array(s.wIdx), sw: Float32Array.from(s.wW, (v) => v / 255) };
     const bodyGeo = buildGeometry(pos, s.nBase, s.rmap, s.ruv, bodyIndex, bodyW.si, bodyW.sw);
-    this.skinMat = MM.skinMaterial(skinInfo, tint, this.detail !== 'low');
+    const cheap = this.detail === 'low';
+    this.skinMat = MM.skinMaterial(skinInfo, tint, !cheap, cheap);
     addSkinned(bodyGeo, this.skinMat);
 
     // ---- proxies
@@ -261,7 +263,7 @@ export class MHuman {
       const si = new Uint16Array(p.n * 4), sw = new Float32Array(p.n * 4);
       for (let i = 0; i < p.n; i++) { si[i * 4] = s.boneIndex[fp[i * 3] > 0 ? 'eye.L' : 'eye.R']; sw[i * 4] = 1; }
       const eyeName = s.m.eyes[L.eyes] ? L.eyes : 'brown';
-      const em = addProxy(p, MM.eyeMaterial(s.m.eyes[eyeName]), { weights: { si, sw }, shadow: false, small: true });
+      const em = addProxy(p, MM.eyeMaterial(s.m.eyes[eyeName], cheap), { weights: { si, sw }, shadow: false, small: true });
       // eyeballs are spheres: use radial normals (robust against flipped faces)
       const ga = em.geometry.attributes.position, na = em.geometry.attributes.normal;
       const cL = this.heads['eye.L'], cR = this.heads['eye.R'], tmp = new THREE.Vector3();
@@ -273,15 +275,15 @@ export class MHuman {
     }
     const hairCol = new THREE.Color(L.hairColor || '#3a2a1f');
     const brow = proxy(L.browStyle || (female ? 'eyebrow010' : 'eyebrow002')) || proxy('eyebrow001');
-    addProxy(brow, MM.cardMaterial(brow.d.tex, hairCol.clone().multiplyScalar(0.75), { alphaTest: 0.35, aniso: 0 }), { shadow: false, order: 2, small: true });
+    addProxy(brow, MM.cardMaterial(brow.d.tex, hairCol.clone().multiplyScalar(0.75), { alphaTest: 0.35, aniso: 0, cheap }), { shadow: false, order: 2, small: true });
     const lash = proxy(female ? 'eyelashes03' : 'eyelashes01') || proxy('eyelashes01');
-    addProxy(lash, MM.cardMaterial(lash.d.tex, '#120c0a', { alphaTest: 0.35, aniso: 0 }), { shadow: false, order: 3, small: true });
+    addProxy(lash, MM.cardMaterial(lash.d.tex, '#120c0a', { alphaTest: 0.35, aniso: 0, cheap }), { shadow: false, order: 3, small: true });
     if (L.hairStyle && L.hairStyle !== 'bald') {
       const hp = proxy(L.hairStyle);
-      if (hp) addProxy(hp, MM.cardMaterial(hp.d.tex, hairCol, { alphaTest: 0.42 }), { shadow: true, order: 4 });
+      if (hp) addProxy(hp, MM.cardMaterial(hp.d.tex, hairCol, { alphaTest: 0.42, cheap }), { shadow: true, order: 4 });
     }
     for (const w of worn) {
-      const mat = MM.clothMaterial(w.p.d.tex, w.p.d.normal, w.color && w.color !== 'original' ? w.color : null, { layer: w.layer });
+      const mat = MM.clothMaterial(w.p.d.tex, w.p.d.normal, w.color && w.color !== 'original' ? w.color : null, { layer: w.layer, cheap });
       addProxy(w.p, mat, { ground: w.p.name.startsWith('shoes'), order: 1 + w.layer, surface: w.layer >= 1 && w.layer <= 2 });
     }
 
@@ -293,6 +295,7 @@ export class MHuman {
     rig.position.y = -minY * sc;
     void hDm;
     this.scale = sc;
+    this.eyeY = (this.heads['eye.L'].y - minY) * sc; // eye height above the feet (m): people look each other in the eye
     this.buildAccessories(pos);
     this.root.add(rig);
     this.animator = new MHAnimator(this);
@@ -405,7 +408,7 @@ export class MHuman {
 // Used for pedestrians so the city fills up quickly.
 export function cloneHuman(src) {
   const root = cloneSkinned(src.root);
-  const h = { root, look: src.look, heads: src.heads, tails: src.tails, scale: src.scale, bones: {},
+  const h = { root, look: src.look, heads: src.heads, tails: src.tails, scale: src.scale, eyeY: src.eyeY, bones: {},
     anim: { speed: 0, air: false, sit: false, lookAt: null, lookAtCamera: false, turn: 0 } };
   root.traverse((o) => { if (o.isBone) h.bones[o.name] = o; });
   h.animator = new MHAnimator(h);
