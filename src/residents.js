@@ -50,15 +50,19 @@ export class Resident {
     if (visitor) {
       const d = visitor.pos.distanceTo(P.pos);
       if (d < 4.5) {
-        a.lookAt = this.head.set(visitor.pos.x, visitor.pos.y + (visitor.human.eyeY || 1.6), visitor.pos.z);
+        a.lookAt = this.head.set(visitor.pos.x, visitor.pos.y + (visitor.human.eyeY || 1.6) - (visitor.human.anim.sit ? 0.45 : 0), visitor.pos.z);
+        // the taller one leans down a little to talk
+        const diff = P.pos.y + (P.human.eyeY || 1.6) - a.lookAt.y;
+        a.bend = this.mode === 'act' && this.spot.pose !== 'sit' && d < 2.2 ? Math.min(1, Math.max(0, (diff - 0.05) / 0.22)) * Math.min(1, (2.2 - d) / 0.8) : 0;
         if (!this.greeted) { this.greeted = true; this.waveT = 2.2; if (this.onGreet) this.onGreet(); }
         // standing and chatting: turn to face the visitor
         if (d < 2.8 && this.mode === 'act' && this.spot.pose !== 'sit') {
           let dy = Math.atan2(visitor.pos.x - P.pos.x, visitor.pos.z - P.pos.z) - P.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
           P.yaw += dy * Math.min(1, dt * 4);
         }
-      } else if (d > 7) this.greeted = false;
-    }
+      } else { a.bend = 0; if (d > 7) this.greeted = false; }
+    } else a.bend = 0;
+    a.driving = this.mode === 'act' && this.spot.name === 'desk'; // hands on the keyboard
     if (this.waveT > 0) { this.waveT -= dt; a.wave = this.waveT > 0.6 && this.mode === 'act'; }
   }
 }

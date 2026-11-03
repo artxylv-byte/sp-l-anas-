@@ -126,7 +126,10 @@ function teleport(P, pos, yaw) {
   if (game.switching) return;
   game.switching = true; fade(true);
   setTimeout(() => {
+    if (P.seat) standUp(P);
     P.pos.copy(pos); P.pos.y = world.groundHeight(pos.x, pos.z); P.vel.set(0, 0, 0); P.yaw = yaw; P.grounded = true;
+    const F = game.hangout && game.hangout.friend;
+    if (F && !F.riding) { if (F.seat) standUp(F); F.goSeat = null; F.pos.set(pos.x - Math.cos(yaw) * 0.9, 0, pos.z + Math.sin(yaw) * 0.9); F.pos.y = world.groundHeight(F.pos.x, F.pos.z); F.yaw = yaw; }
     game.camYaw = yaw; game.camPitch = 0.22;
     updateCamera(0.016, true);
     fade(false); game.switching = false;
@@ -161,7 +164,8 @@ function updateBubbles(dt) {
 function makePlayer(who, pos) {
   const h = new Human(looks[who]);
   return { who, human: h, pos: pos.clone(), vel: new THREE.Vector3(), yaw: Math.PI, grounded: true, car: null, resident: null,
-    tilt: 0, tiltTo: 0, downT: 0, getupT: 0, stepOff: 0, coyote: 0, jumpBuf: 0, punchCD: 0, punchHit: 0, lookT: 0, lookEnt: null, landT: 0, landAmt: 0, lean: 0, prevSpeed: 0 };
+    tilt: 0, tiltTo: 0, downT: 0, getupT: 0, stepOff: 0, coyote: 0, jumpBuf: 0, punchCD: 0, punchHit: 0, lookT: 0, lookEnt: null, landT: 0, landAmt: 0, lean: 0, prevSpeed: 0,
+    seat: null, goSeat: null, riding: null, drink: null, drinkT: 0, leaving: 0, hi5T: 0 };
 }
 // eye position of anybody (players or pedestrians), lower when sitting
 const _eye = new THREE.Vector3();
@@ -214,6 +218,248 @@ function adaptResolution(raw) {
   if (Math.abs(s - dyn.scale) > 0.001) { dyn.scale = s; applyResolution(); dyn.cool = 1; }
 }
 
+// ------------------------------------------------------------------ close friends: sitting, drinks, sleep, hanging out
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const timers = [];
+function schedule(secs, fn) { timers.push({ t: secs, fn }); }
+const aptAt = (x, z) => { const b = world.interiorAt(x, z); return b ? Object.values(game.homes).find((h) => h.apt.bounds === b) : null; };
+function benchSeats(b) {
+  const rx = Math.cos(b.yaw), rz = -Math.sin(b.yaw), fx = Math.sin(b.yaw), fz = Math.cos(b.yaw);
+  const s = [-1, 1].map((sd) => { const pos = new THREE.Vector3(b.pos.x + rx * 0.45 * sd, b.pos.y, b.pos.z + rz * 0.45 * sd); return { name: 'bench', pos, yaw: b.yaw, stand: new THREE.Vector3(pos.x + fx * 0.7, b.pos.y, pos.z + fz * 0.7) }; });
+  s[0].pairSeat = s[1]; s[1].pairSeat = s[0];
+  return s;
+}
+function seatOccupied(seat, except) {
+  for (const n of peds.list) if (n.state === 'sit' && n.pos.distanceTo(seat.pos) < 0.5) return true;
+  for (const P of Object.values(game.players)) {
+    if (P === except) continue;
+    if (P.seat && P.seat.pos.distanceTo(seat.pos) < 0.3) return true;
+    if (P.resident && P.resident.mode === 'act' && P.resident.spot.pose === 'sit' && P.pos.distanceTo(seat.pos) < 0.5) return true;
+  }
+  return false;
+}
+function nearestSeat(P) {
+  const hm = aptAt(P.pos.x, P.pos.z);
+  const list = hm ? hm.apt.seats : world.benches.filter((b) => b.pos.distanceTo(P.pos) < 3).flatMap(benchSeats);
+  let best = null, bd = 1.1;
+  for (const s of list) { const d = Math.min(s.pos.distanceTo(P.pos), s.stand.distanceTo(P.pos)); if (d < bd && !seatOccupied(s, P)) { bd = d; best = s; } }
+  return best;
+}
+function sitDown(P, seat) {
+  P.seat = seat; P.goSeat = null; P.vel.set(0, 0, 0);
+  P.pos.copy(seat.pos); P.yaw = seat.yaw;
+  Object.assign(P.human.anim, { sit: true, driving: seat.name === 'desk', speed: 0, air: false });
+}
+function standUp(P) {
+  const s = P.seat; if (!s) return;
+  P.seat = null; Object.assign(P.human.anim, { sit: false, driving: false });
+  P.pos.copy(s.stand); P.pos.y = world.groundHeight(s.stand.x, s.stand.z); P.grounded = true;
+}
+// a cold drink from the fridge, held in the right hand
+const CAN_COLORS = ['#d63b3b', '#3b7bd6', '#3bb36a', '#f2b632', '#8a5ab8'];
+function giveDrink(P) {
+  const h = P.human, bone = h.bones['wrist.R'];
+  if (!bone || P.drink) return;
+  const dir = h.tails['wrist.R'].clone().sub(h.heads['wrist.R']).normalize();
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.33, 0.33, 1.2, 14), new THREE.MeshStandardMaterial({ color: pick(CAN_COLORS), metalness: 0.55, roughness: 0.35 })));
+  const top = new THREE.Mesh(new THREE.CylinderGeometry(0.31, 0.31, 0.05, 14), new THREE.MeshStandardMaterial({ color: '#cfd2d6', metalness: 1, roughness: 0.3 })); top.position.y = 0.62; g.add(top);
+  g.rotation.x = Math.PI / 2;
+  g.position.copy(dir).multiplyScalar(0.8); g.position.z += 0.25;
+  bone.add(g);
+  P.drink = { obj: g, sips: 3 }; h.anim.hold = true;
+}
+function dropDrink(P) { if (!P.drink) return; P.drink.obj.removeFromParent(); P.drink = null; Object.assign(P.human.anim, { hold: false, drinking: false }); P.drinkT = 0; }
+function sip(P) {
+  if (!P.drink || P.drinkT > 0) return;
+  P.drinkT = 1.8; P.human.anim.drinking = true;
+  schedule(1.3, () => { P.human.anim.drinking = false; if (P.drink && --P.drink.sips <= 0) { schedule(0.5, () => dropDrink(P)); say(P, pick(['Ahh! 😋', 'Mmm, refreshing!', 'Paldies, fridge 😄']), 1.8); } });
+}
+function useFridge(P, apt) {
+  P.yaw = apt.fridge.yaw; P.vel.set(0, 0, 0); apt.fridge.want = 1;
+  schedule(0.7, () => giveDrink(P));
+  schedule(1.7, () => { apt.fridge.want = 0; });
+  const F = game.hangout && game.hangout.friend;
+  if (F && !F.drink && F.pos.distanceTo(P.pos) < 5) schedule(1.1, () => { giveDrink(F); say(F, pick(['Paldies! 🥤', 'Ooh, thanks!', 'My favourite!']), 2); });
+}
+function sleepUntilMorning(P) {
+  if (game.switching) return;
+  game.switching = true; fade(true);
+  const night = world.time > 19 || world.time < 6;
+  setTimeout(() => {
+    if (game.hangout) endHangout(true, true);
+    world.time = night ? 7.5 : (world.time + 2) % 24;
+    world.lastEnvSun = -999;
+    fade(false); game.switching = false;
+    toast(night ? 'Labrīt! ☀️ Good morning' : 'What a nice nap 😴', 2.5);
+  }, 700);
+}
+
+// hanging out: the other character comes along – walks with you, rides in your car, sits next to you, chats
+const FRIEND_LINES = {
+  Vecrīga: ['I love the Old Town streets 😍', "Let's get ice cream here! 🍦", "St. Peter's spire is sooo tall", 'These cobblestones vs my shoes 😅'],
+  Centrs: ['Want to grab a coffee? ☕', 'These Art Nouveau houses are so pretty', 'Brīvības iela is busy today!'],
+  Bastejkalns: ['Look, ducks in the canal! 🦆', "Let's sit on a bench for a bit?", 'Milda looks amazing today ⭐⭐⭐'],
+  Krastmala: ['The sunset over the Daugava is the best 🌅', "Let's walk along the river"],
+  Daugava: ['Look at the river! 🌊', 'Best view of the Old Town 😍'],
+  'Pārdaugava': ['The library looks like a glass mountain', 'Look at the skyline from here!'],
+  'Maskavas forštate': ['Want to check out the Central Market? 🥒', 'The Academy of Sciences is huge!'],
+};
+function friendLine(P, F) {
+  const pos = P.car ? P.car.pos : P.pos;
+  if (P.car && Math.abs(P.car.speed) > 22) return pick(['Slow down! 😅', 'Whoa, careful! 😬', "We're gonna crash! 😱"]);
+  if (performance.now() - (game.lastFight || -1e9) < 8000) return pick(['Hey! Be nice to people! 😬', 'Why did you do that?! 😳', 'Not cool…']);
+  if (Math.random() < 0.2) return pick(heightTalk(F, P));
+  if (aptAt(pos.x, pos.z)) return pick(['Your place is so cozy 😊', 'Got any snacks? 😄', 'Wanna watch something on TV? 📺']);
+  if (world.dayAmount < 0.4 && Math.random() < 0.5) return pick(['The lanterns look so nice at night ✨', "It's getting late… 🌙", 'Riga at night is beautiful']);
+  return pick(FRIEND_LINES[locationAt(pos.x, pos.z).district] || FRIEND_LINES.Centrs);
+}
+function arrivalSpot(P) {
+  const at = P.car ? P.car.pos : P.pos;
+  const hm = aptAt(at.x, at.z);
+  if (hm) return hm.apt.entry.clone();
+  const back = new THREE.Vector3(-Math.sin(game.camYaw), 0, -Math.cos(game.camYaw));
+  for (const [d, side] of [[9, 0], [9, 3], [9, -3], [5, 2], [3, 0], [1.5, 0]]) {
+    const x = at.x + back.x * d + back.z * side, z = at.z + back.z * d - back.x * side;
+    const blocked = world.query(x, z, 0.5).some((b) => !b.bound && x > b.minX - 0.4 && x < b.maxX + 0.4 && z > b.minZ - 0.4 && z < b.maxZ + 0.4 && b.h > at.y + 0.3);
+    const gy = world.groundHeight(x, z);
+    if (!blocked && Math.abs(gy - at.y) < 0.5) return new THREE.Vector3(x, gy, z);
+  }
+  return at.clone();
+}
+function startHangout(call) {
+  const P = game.players[game.active], F = game.players[otherOf(P.who)];
+  if (game.hangout || game.calling) return;
+  const join = (spot) => {
+    if (spot) { F.pos.copy(spot); F.yaw = Math.atan2(P.pos.x - F.pos.x, P.pos.z - F.pos.z); }
+    else if (F.resident && F.resident.mode === 'act' && F.resident.spot.pose === 'sit' && F.resident.spot.pathW.length) F.pos.copy(F.resident.spot.pathW[F.resident.spot.pathW.length - 1]);
+    F.resident = null; F.leaving = 0; F.seat = null; F.vel.set(0, 0, 0); F.grounded = true;
+    Object.assign(F.human.anim, { sit: false, wave: false, talk: 0, driving: false, lookAt: null });
+    game.hangout = { friend: F, chatT: 14 + Math.random() * 10, talkT: 0 };
+    say(F, pick(['Jā! Ejam! 😄', "Sure, let's go!", 'Finally, I was so bored 😄']), 2.5);
+  };
+  if (!call) { join(null); return; }
+  game.calling = true;
+  toast(`📱 Calling ${looks[F.who].name}…`, 2);
+  schedule(2.2, () => toast(`${looks[F.who].name}: "On my way!" 🏃`, 2.4));
+  schedule(6, () => { game.calling = false; const Pn = game.players[game.active]; if (Pn !== P || game.hangout) return; join(arrivalSpot(P)); });
+}
+function boardCar(F, car) {
+  F.riding = car; if (F.seat) standUp(F); F.goSeat = null;
+  car.body.add(F.human.root);
+  F.human.root.position.set(-(car.T.W / 2 - 0.62), car.T.ground - 0.08, -car.T.L * 0.06);
+  F.human.root.rotation.set(0, 0, 0);
+  Object.assign(F.human.anim, { sit: true, driving: false, speed: 0 });
+}
+function leaveCar(F) {
+  const car = F.riding; if (!car) return;
+  F.riding = null; game.scene.add(F.human.root);
+  const f = car.fwd;
+  F.pos.set(car.pos.x - f.z * (car.T.W / 2 + 0.7), 0, car.pos.z + f.x * (car.T.W / 2 + 0.7)); F.pos.y = world.groundHeight(F.pos.x, F.pos.z);
+  F.yaw = car.yaw; F.human.anim.sit = false;
+  collidePerson(F.pos, 0.3);
+}
+function endHangout(silent, now) {
+  const H = game.hangout; if (!H) return;
+  const F = H.friend; game.hangout = null;
+  if (F.riding) leaveCar(F);
+  if (F.seat) standUp(F);
+  dropDrink(F);
+  if (now) { sendHome(F); return; }
+  if (!silent) say(F, pick(['Paldies, that was fun! 👋', 'See you later! 👋', 'Bye! Text me 📱']), 2.6);
+  F.leaving = 3.5;
+}
+function highFive(P, F) {
+  if (P.hi5T > 0 || F.riding || P.car || F.pos.distanceTo(P.pos) > 2.4) return;
+  // step in to about an arm's length apart, facing each other
+  const dx = F.pos.x - P.pos.x, dz = F.pos.z - P.pos.z, d = Math.hypot(dx, dz) || 1;
+  if (d > 1.0) { F.pos.x = P.pos.x + (dx / d) * 1.0; F.pos.z = P.pos.z + (dz / d) * 1.0; }
+  P.yaw = Math.atan2(dx, dz); F.yaw = P.yaw + Math.PI;
+  P.hi5T = F.hi5T = 0.9; P.human.anim.hi5 = F.human.anim.hi5 = true;
+  schedule(0.45, () => { say(P, '✋', 1); say(F, pick(['Up top! ✋', 'Nice! 🙌', 'Yesss! ✋'])); game.shake = Math.max(game.shake, 0.12); });
+}
+// how much the taller one leans down to talk to someone shorter (or sitting) close by
+function bendFor(me, eyeTarget, dist) {
+  if (!eyeTarget || dist > 2.2 || me.seat) return 0;
+  const diff = me.pos.y + (me.human.eyeY || 1.6) - eyeTarget.y;
+  return THREE.MathUtils.clamp((diff - 0.05) / 0.22, 0, 1) * THREE.MathUtils.clamp((2.2 - dist) / 0.8, 0, 1);
+}
+function updateFriend(dt, P) {
+  for (let i = timers.length - 1; i >= 0; i--) { timers[i].t -= dt; if (timers[i].t <= 0) { const fn = timers[i].fn; timers.splice(i, 1); fn(); } }
+  for (const Q of Object.values(game.players)) {
+    if (Q.hi5T > 0 && (Q.hi5T -= dt) <= 0) Q.human.anim.hi5 = false;
+    if (Q.drinkT > 0) Q.drinkT -= dt;
+  }
+  const F = game.players[otherOf(P.who)], a = F.human.anim;
+  if (F.leaving > 0) { // walking off after saying bye
+    F.leaving -= dt;
+    const dx = F.pos.x - P.pos.x, dz = F.pos.z - P.pos.z;
+    F.yaw += wrapA(Math.atan2(dx, dz) - F.yaw) * Math.min(1, dt * 5);
+    F.pos.x += Math.sin(F.yaw) * 1.4 * dt; F.pos.z += Math.cos(F.yaw) * 1.4 * dt; collidePerson(F.pos, 0.3);
+    F.pos.y = world.groundHeight(F.pos.x, F.pos.z); a.speed = 1.4; a.lookAt = null; a.bend = 0;
+    if (F.leaving <= 0) sendHome(F);
+    return;
+  }
+  const H = game.hangout; if (!H) return;
+  // chatting about where you are
+  if ((H.chatT -= dt) <= 0) { H.chatT = 18 + Math.random() * 16; say(F, friendLine(P, F), 3); H.talkT = 3; }
+  if (H.talkT > 0) H.talkT -= dt;
+  // in the car: passenger seat
+  if (P.car) { if (F.riding !== P.car) { if (F.riding) leaveCar(F); boardCar(F, P.car); } return; }
+  if (F.riding) leaveCar(F);
+  // separated (other room / far away): catch up out of sight
+  const sameRoom = aptAt(F.pos.x, F.pos.z) === aptAt(P.pos.x, P.pos.z);
+  if (!sameRoom || F.pos.distanceTo(P.pos) > 40) { if (F.seat) standUp(F); F.pos.copy(arrivalSpot(P)); F.goSeat = null; }
+  // sit next to you
+  if (P.seat && !F.seat && !F.goSeat) { const s = P.seat.pairSeat; if (s && !seatOccupied(s, F)) F.goSeat = s; }
+  if (!P.seat && (F.seat || F.goSeat)) { if (F.seat) standUp(F); F.goSeat = null; }
+  const eyeP = eyeOf(P), dP = F.pos.distanceTo(P.pos);
+  if (F.seat) {
+    a.speed = 0; F.vel.set(0, 0, 0);
+    const tv = aptAt(F.pos.x, F.pos.z);
+    a.lookAt = H.talkT > 0 || !tv || F.seat.name !== 'sofa' ? (F.lookVec ||= new THREE.Vector3()).copy(eyeP) : (F.tvVec ||= new THREE.Vector3()).copy(tv.apt.origin).add(new THREE.Vector3(-5.9, 1.35, 0));
+    a.bend = 0;
+    return;
+  }
+  // chatting or high-fiving: stop and face each other
+  if (F.hi5T > 0 || P.hi5T > 0 || P.lookEnt === F) {
+    F.vel.set(0, 0, 0); a.speed = 0;
+    F.yaw += wrapA(Math.atan2(P.pos.x - F.pos.x, P.pos.z - F.pos.z) - F.yaw) * Math.min(1, dt * 8);
+    a.lookAt = (F.lookVec ||= new THREE.Vector3()).copy(eyeP); a.bend = bendFor(F, eyeP, dP);
+    return;
+  }
+  // walk beside you (on your right, a step back), run to catch up
+  let target;
+  if (F.goSeat) { target = F.goSeat.stand; if (Math.hypot(target.x - F.pos.x, target.z - F.pos.z) < 0.35) { sitDown(F, F.goSeat); return; } }
+  else {
+    const yaw = P.yaw, rx = -Math.cos(yaw), rz = Math.sin(yaw);
+    target = _tgt.set(P.pos.x + rx * 1.0 - Math.sin(yaw) * 0.5, P.pos.y, P.pos.z + rz * 1.0 - Math.cos(yaw) * 0.5);
+    const blocked = world.query(target.x, target.z, 0.4).some((b) => !b.bound && target.x > b.minX - 0.3 && target.x < b.maxX + 0.3 && target.z > b.minZ - 0.3 && target.z < b.maxZ + 0.3 && b.h > P.pos.y + 0.3);
+    if (blocked) target.set(P.pos.x - Math.sin(yaw) * 1.2, P.pos.y, P.pos.z - Math.cos(yaw) * 1.2);
+  }
+  const tx = target.x - F.pos.x, tz = target.z - F.pos.z, d = Math.hypot(tx, tz);
+  const pSpeed = Math.hypot(P.vel.x, P.vel.z);
+  const speed = d > 4 ? 6 : d > 1.2 ? Math.max(2.4, pSpeed) : d > 0.3 ? Math.max(1.1, pSpeed * 0.9) : 0;
+  if (speed > 0) {
+    const ux = tx / d, uz = tz / d, st = Math.min(d, speed * dt);
+    F.pos.x += ux * st; F.pos.z += uz * st;
+    F.yaw += wrapA(Math.atan2(ux, uz) - F.yaw) * Math.min(1, dt * 8);
+    F.vel.set(ux * speed, 0, uz * speed);
+  } else {
+    F.vel.set(0, 0, 0);
+    F.yaw += wrapA((dP < 2.5 ? Math.atan2(P.pos.x - F.pos.x, P.pos.z - F.pos.z) : P.yaw) - F.yaw) * Math.min(1, dt * 3);
+  }
+  collidePerson(F.pos, 0.3);
+  // personal space with your friend too
+  const sx = F.pos.x - P.pos.x, sz = F.pos.z - P.pos.z, sl = Math.hypot(sx, sz);
+  if (sl < 0.6 && sl > 1e-3) { F.pos.x += (sx / sl) * (0.6 - sl); F.pos.z += (sz / sl) * (0.6 - sl); }
+  F.pos.y = world.groundHeight(F.pos.x, F.pos.z); F.grounded = true;
+  a.speed = speed; a.air = false;
+  a.lookAt = dP < 4 && (speed < 1.5 || H.talkT > 0) ? (F.lookVec ||= new THREE.Vector3()).copy(eyeP) : null;
+  a.bend = speed < 0.5 ? bendFor(F, eyeP, dP) : 0;
+}
+const _tgt = new THREE.Vector3();
+
 function buildGame() {
   const scene = (game.scene = new THREE.Scene());
   world = new World(scene, renderer, Q);
@@ -226,7 +472,7 @@ function buildGame() {
     arturs: { apt: buildApartment(scene, new THREE.Vector3(1800, 0, -1800), APT_STYLE.arturs), door: world.places.homeArturs },
     paula: { apt: buildApartment(scene, new THREE.Vector3(1800, 0, -1740), APT_STYLE.paula), door: world.places.homePaula },
   };
-  for (const hm of Object.values(game.homes)) world.addInterior(hm.apt);
+  for (const hm of Object.values(game.homes)) { world.addInterior(hm.apt); for (const s of hm.apt.seats) s.pairSeat = s.pair >= 0 ? hm.apt.seats[s.pair] : null; }
   // a small pool of point lights: the room lamps indoors, the nearest street lanterns outdoors at night
   game.lights = Array.from({ length: Q.high ? 3 : 2 }, () => { const l = new THREE.PointLight('#ffd9a8', 0, 18, 1.5); scene.add(l); return l; });
   game.headlight = new THREE.SpotLight('#fff3dc', 0, 75, 0.55, 0.5, 1.3);
@@ -240,6 +486,11 @@ function buildGame() {
   fleet = carFleet(scene);
   peds = new Population(scene, world, { walkers: Q.peds, variants: Q.pedVariants, groups: Q.groups, sitters: Q.sitters, shadows: Q.high, focus: sp, say, range: L3(60, 85, 100) });
   props = new Props(scene, world, sp);
+  peds.onKnock = () => {
+    game.lastFight = performance.now();
+    const H = game.hangout;
+    if (H && !(H.scoldT > performance.now())) { H.scoldT = performance.now() + 6000; schedule(0.6, () => game.hangout && say(H.friend, pick(['Hey! Be nice! 😬', 'Why did you do that?! 😳', 'Not cool…']), 2.4)); }
+  };
   // cash pickups (euro notes)
   const cashM = new THREE.MeshStandardMaterial({ color: '#4fd06b', emissive: '#2fa04b', emissiveIntensity: 0.6, roughness: 0.4 });
   for (let k = 0; k < 30; k++) {
@@ -390,13 +641,14 @@ function enterCar(P, car) {
   car.body.add(P.human.root);
   P.human.root.position.set(car.T.W / 2 - 0.62, car.T.ground - 0.08, -car.T.L * 0.06);
   P.human.root.rotation.set(0, 0, 0);
-  P.human.anim.sit = true; P.human.anim.lookAt = null;
+  P.human.anim.sit = true; P.human.anim.lookAt = null; P.human.anim.driving = true;
+  if (P.seat) P.seat = null;
   toast('');
 }
 function exitCar(P) {
   const car = P.car; if (!car) return;
   car.driver = null; Object.assign(car.ctrl, { throttle: 0, brake: 0, steer: 0, handbrake: false }); car.speed *= 0.3;
-  P.car = null; P.human.anim.sit = false;
+  P.car = null; P.human.anim.sit = false; P.human.anim.driving = false;
   game.scene.add(P.human.root);
   const f = car.fwd;
   P.pos.set(car.pos.x + f.z * (car.T.W / 2 + 0.7), 0, car.pos.z - f.x * (car.T.W / 2 + 0.7)); P.pos.y = world.groundHeight(P.pos.x, P.pos.z);
@@ -406,9 +658,28 @@ function exitCar(P) {
 
 function switchCharacter() {
   if (game.switching) return;
+  if (game.hangout) { // hanging out: just take control of your friend, they keep each other company
+    const old = game.players[game.active], P = game.players[otherOf(old.who)];
+    game.active = P.who; game.hangout.friend = old;
+    if (old.car) { // swap seats in the car
+      const car = old.car;
+      old.car = null; old.human.anim.driving = false; boardCar(old, car);
+      P.riding = null; car.driver = P.who; P.car = car; car.body.add(P.human.root);
+      P.human.root.position.set(car.T.W / 2 - 0.62, car.T.ground - 0.08, -car.T.L * 0.06); P.human.root.rotation.set(0, 0, 0);
+      Object.assign(P.human.anim, { sit: true, driving: true });
+    }
+    old.lookEnt = null; P.goSeat = null;
+    $('hName').textContent = looks[game.active].name.toUpperCase();
+    game.camYaw = P.car ? P.car.yaw : P.yaw;
+    toast(looks[game.active].name, 1.4);
+    return;
+  }
   game.switching = true; fade(true);
   setTimeout(() => {
-    sendHome(game.players[game.active]);
+    const prev = game.players[game.active];
+    if (prev.seat) standUp(prev);
+    dropDrink(prev);
+    sendHome(prev);
     game.active = otherOf(game.active);
     const P = game.players[game.active];
     const R = P.resident;
@@ -497,6 +768,13 @@ function updatePlayer(dt) {
 
   if (input.hit('Tab', 'KeyQ', 'btn:switch')) switchCharacter();
   if (input.hit('Escape', 'KeyP', 'btn:pause')) { pauseGame(true); return; }
+  // friends: H = hang out (calls them if they're not around) / say bye, G = high five
+  const F = game.players[otherOf(P.who)];
+  if (input.hit('KeyH', 'btn:hang') && !P.downT) {
+    if (game.hangout) endHangout(false);
+    else startHangout(!(F.resident && F.pos.distanceTo(P.pos) < 3));
+  }
+  if (input.hit('KeyG', 'btn:hi5') && game.hangout && !P.car && !P.seat) highFive(P, F);
 
   if (P.car) {
     const car = P.car;
@@ -517,6 +795,15 @@ function updatePlayer(dt) {
     P.getupT -= dt; const u = 1 - P.getupT / 1.3;
     P.human.anim.crouch = P.getupT <= 0 ? 0 : u < 0.55 ? 1 : Math.max(0, 1 - (u - 0.55) / 0.45);
     setPrompt(null); return;
+  }
+  // sitting down: get up by moving or pressing E
+  if (P.seat) {
+    P.vel.set(0, 0, 0);
+    const press = input.hit('KeyE', 'btn:interact');
+    if (Math.hypot(mv.x, mv.y) > 0.4) standUp(P);
+    else if (P.drink) { if (press) sip(P); setPrompt(`${key('E')} Take a sip · move to stand up`); return; }
+    else if (press) { standUp(P); input.pressed.delete('KeyE'); input.pressed.delete('btn:interact'); } // don't sit straight back down
+    else { setPrompt(`${key('E')} Stand up`); return; }
   }
   // on foot
   const fwd = new THREE.Vector3(Math.sin(game.camYaw), 0, Math.cos(game.camYaw));
@@ -582,18 +869,31 @@ function updatePlayer(dt) {
     const hm = Object.values(game.homes).find((h) => h.apt.bounds === inside);
     if (hm.apt.exit.distanceTo(P.pos) < 1.3) { prompt = `${key('E')} Go outside`; if (use()) { teleport(P, hm.door.pos, hm.door.yaw); setPrompt(null); return; } }
     else if (hm.apt.wardrobe.distanceTo(P.pos) < 1.5) { prompt = `${key('E')} Open the wardrobe`; if (use()) { openStudio('game'); return; } }
+    else if (hm.apt.fridge.pos.distanceTo(P.pos) < 1.2 && !P.drink) { prompt = `${key('E')} Grab a drink`; if (use()) { useFridge(P, hm.apt); setPrompt(null); return; } }
+    else if (hm === game.homes[P.who] && hm.apt.bed.pos.distanceTo(P.pos) < 1.3) {
+      const night = world.time > 19 || world.time < 6;
+      prompt = `${key('E')} ${night ? 'Sleep until morning' : 'Take a nap'}`; if (use()) { sleepUntilMorning(P); setPrompt(null); return; }
+    }
   }
   // talk to the other character, or say hi to people in the street
   const other = game.players[otherOf(P.who)];
-  if (!prompt && other.resident && other.pos.distanceTo(P.pos) < 2.6) {
-    prompt = `${key('E')} Talk to ${looks[other.who].name}`;
+  const friendNear = !other.riding && other.pos.distanceTo(P.pos) < 2.6 && (other.resident || game.hangout);
+  if (!prompt) { const seat = nearestSeat(P); if (seat && Math.min(seat.pos.distanceTo(P.pos), seat.stand.distanceTo(P.pos)) < 0.9) { prompt = `${key('E')} Sit down`; if (use()) { sitDown(P, seat); setPrompt(null); return; } } }
+  if (!prompt && friendNear) {
+    const keys = input.isTouch ? '' : game.hangout ? ` · ${key('G')} High five · ${key('H')} Bye` : ` · ${key('H')} Hang out`;
+    prompt = `${key('E')} Talk to ${looks[other.who].name}${keys}`;
     if (use()) {
-      other.resident.waveT = 2.2;
-      const lines = [...heightTalk(other, P), `Hey ${looks[P.who].name}! What's up?`, 'Want to hang out later?', 'I was just chilling here 😄', 'Nice outfit today!', 'Grab something from the fridge if you want!'];
+      if (other.resident) other.resident.waveT = 2.2; else if (game.hangout) game.hangout.talkT = 3;
+      const home = !!aptAt(P.pos.x, P.pos.z);
+      const lines = game.hangout && !home
+        ? [...heightTalk(other, P), friendLine(P, other), friendLine(P, other), 'Nice outfit today!', "This is fun, I'm glad you called 😊"]
+        : [...heightTalk(other, P), `Hey ${looks[P.who].name}! What's up?`, game.hangout ? 'Your place is so cozy 😊' : 'Want to hang out? Press H 😄', 'I was just chilling here 😄', 'Nice outfit today!', 'Grab something from the fridge if you want!'];
       say(other, lines[Math.floor(Math.random() * lines.length)], 3);
       P.lookEnt = other; P.lookT = 3.5;
     }
   }
+  if (!prompt) { const seat = nearestSeat(P); if (seat) { prompt = `${key('E')} Sit down`; if (use()) { sitDown(P, seat); setPrompt(null); return; } } }
+  if (!prompt && P.drink && P.drinkT <= 0) { prompt = `${key('E')} Take a sip`; if (use()) sip(P); }
   if (!prompt && !inside) {
     const n = peds.nearest(P.pos, 2.4);
     if (n) { prompt = `${key('E')} Say hi`; if (use()) { say(P, Math.random() < 0.5 ? 'Sveiki!' : 'Hi!', 1.4); say(n, peds.greet(n, P), 2.8); P.lookEnt = n; P.lookT = 3; } }
@@ -605,9 +905,9 @@ function updateCharacters(dt) {
   const active = game.players[game.active];
   for (const P of Object.values(game.players)) {
     const h = P.human;
-    if (P.car) { h.anim.speed = 0; h.anim.sit = true; h.update(dt); continue; }
+    if (P.car || P.riding) { h.anim.speed = 0; h.anim.sit = true; h.anim.bend = 0; h.update(dt); continue; }
     if (P.resident) P.resident.update(dt, active.car ? null : active);
-    else {
+    else if (P === active) {
       h.anim.speed = P.downT > 0 || P.getupT > 0 ? 0 : Math.hypot(P.vel.x, P.vel.z); h.anim.air = !P.grounded;
       // look people in the eye: whoever you're talking to, or someone close in front of you
       if (P.lookT > 0) P.lookT -= dt; else P.lookEnt = null;
@@ -618,11 +918,12 @@ function updateCharacters(dt) {
           const other = game.players[otherOf(P.who)];
           const n = peds.nearest(P.pos, 3.2);
           const inFront = (e) => Math.abs(wrapA(Math.atan2(e.pos.x - P.pos.x, e.pos.z - P.pos.z) - P.yaw)) < 1.3;
-          if (other.resident && other.pos.distanceTo(P.pos) < 3.5 && inFront(other)) tgt = eyeOf(other);
+          if ((other.resident || (game.hangout && !other.riding)) && other.pos.distanceTo(P.pos) < 3.5 && inFront(other)) tgt = eyeOf(other);
           else if (n && inFront(n)) tgt = eyeOf(n);
         }
       }
       h.anim.lookAt = tgt ? (P.lookVec ||= new THREE.Vector3()).copy(tgt) : null;
+      h.anim.bend = tgt && Math.hypot(P.vel.x, P.vel.z) < 0.5 ? bendFor(P, tgt, Math.hypot(tgt.x - P.pos.x, tgt.z - P.pos.z)) : 0;
     }
     P.stepOff = damp(P.stepOff, 0, 12, dt);
     P.tilt = damp(P.tilt, P.tiltTo, P.getupT > 0 ? 4.5 : 9, dt);
@@ -705,7 +1006,7 @@ function updateGame(dt) {
   // traffic, then one physics step for every vehicle
   const obstacles = game.obstacles; obstacles.length = 0;
   for (const c of game.cars) obstacles.push(c);
-  for (const p of Object.values(game.players)) if (!p.car && !p.resident) obstacles.push(p.pos);
+  for (const p of Object.values(game.players)) if (!p.car && !p.resident && !p.riding) obstacles.push(p.pos);
   for (const n of peds.list) if (n.h.root.visible && (n.state === 'walk' || n.state === 'flee' || n.state === 'down' || n.state === 'getup')) obstacles.push(n.pos);
   traffic.update(dt, obstacles);
   stepCars(dt, game.cars, world);
@@ -717,7 +1018,10 @@ function updateGame(dt) {
   const people = game.people || (game.people = []); people.length = 0;
   if (!P.car) people.push(P);
   for (const n of peds.list) if ((n.state === 'walk' || n.state === 'flee') && n.h.root.visible && n.pos.distanceTo(focus) < 50) people.push(n);
+  const Fr = game.players[otherOf(P.who)];
+  if (game.hangout && !Fr.riding && !Fr.seat) people.push(Fr);
   props.update(dt, focus, game.cars, people, camera);
+  updateFriend(dt, P);
   updateCharacters(dt);
   const inApt = world.interiorAt(focus.x, focus.z);
   world.indoor = !!inApt;
@@ -759,6 +1063,12 @@ function updateGame(dt) {
   if (P.car) { sp.classList.remove('hidden'); sp.innerHTML = `${Math.round(Math.abs(P.car.speed) * 3.6)}<small>km/h</small>`; } else sp.classList.add('hidden');
   if (game.toastT > 0) { game.toastT -= dt; if (game.toastT <= 0) $('toast').style.opacity = 0; }
   if ((game.mmT -= dt) <= 0) { game.mmT = 1 / 30; drawMinimap(focus, game.camYaw); }
+  if (input.isTouch) { // contextual friend buttons
+    const near = Fr.pos.distanceTo(P.pos) < 2.4 && !P.car;
+    const hb = $('tHang'), fb = $('tHi5');
+    hb.textContent = game.hangout ? 'BYE' : near && Fr.resident ? 'HANG OUT' : 'CALL';
+    fb.style.display = game.hangout && near && !P.seat ? 'flex' : 'none';
+  }
   if (grade) { grade.uniforms.uWarm.value = world.golden * world.dayAmount; bloom.strength = 0.2 + night * 0.25; }
 }
 const _dbs = new THREE.Vector2();
@@ -957,7 +1267,7 @@ function openStudio(from) {
   setState('studio');
 }
 function closeStudio() {
-  for (const who of ['arturs', 'paula']) game.players[who].human.setAppearance(looks[who]);
+  for (const who of ['arturs', 'paula']) { dropDrink(game.players[who]); game.players[who].human.setAppearance(looks[who]); }
   const P = game.players[game.active];
   if (P.car) P.human.anim.sit = true;
   setState('play');

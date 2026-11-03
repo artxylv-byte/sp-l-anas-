@@ -21,6 +21,22 @@ It runs on **Windows 10/11 PCs** and **Android phones** (and anything else with 
   - **Latvian touches:** shop signs in Latvian (KAFEJNĪCA, APTIEKA, MAIZNĪCA…), linden and birch trees, historic lanterns, Latvian number plates, euros, and real Riga street names. The HUD shows where you are (e.g. *Kaļķu iela · Vecrīga*).
 - **Two playable characters.** Switch between Arturs and Paula at any time with Tab or the SWITCH button.
 - **Realistic people.** The characters are built from **MakeHuman** models: photographic skin, real eyes, eyelashes, eyebrows, hair and fabric textures on a 163-bone skeleton. They walk, run, breathe, blink and follow you with their eyes. All of these assets are free and public domain (CC0); see *Credits* below.
+- **Close friends.** Arturs and Paula are best friends, and you can hang out together:
+  - **Hang out:** press **H** (or **CALL / HANG OUT** on the phone).
+    - If your friend is at home next to you, they come along straight away.
+    - If they're somewhere else, you phone them and they turn up a few seconds later.
+    - Press **H** again to say bye; they head home.
+  - **On foot:** they walk beside you and run to catch up.
+  - **In the car:** they hop into the passenger seat when you get in.
+  - **Sitting:** they sit next to you on a bench or the sofa (to watch TV together), or opposite you at the dining table.
+  - **Doors:** they follow you in and out of the apartments.
+  - **Chatting:** they talk about where you are ("Let's get ice cream here! 🍦" in the Old Town, "The sunset over the Daugava is the best 🌅" on the embankment). They tell you to slow down when you drive too fast, and to be nice if you punch someone.
+  - **High fives:** press **G** (or **HIGH 5**).
+  - **Switching:** press **Tab** while hanging out to take control of your friend, and the other one keeps you company.
+- **Everyday life at home and around town:**
+  - **Sitting:** sit on sofas, chairs and park benches (**E**).
+  - **Drinks:** grab a drink from the fridge and take sips. Your friend gets one too.
+  - **Sleep:** sleep in your own bed until morning, or take a nap.
 - **They notice each other's height.** People look each other in the eye: a tall character looks down, a shorter one looks up, and someone sitting is looked down at. Arturs and Paula comment on the height difference ("Did you grow again? I have to look up at you 😄"), and so do people in the street. Taller people also take longer steps.
 - **Character Studio.** Customise every part of each character:
   - **Body:** body type, height (145–205 cm), build, muscle, shoulder shape, skin tone
@@ -70,7 +86,9 @@ Optimisations:
 | Jump / handbrake | Space | JUMP |
 | Punch | R / left click | PUNCH |
 | Enter / exit car | F | CAR |
-| Interact (doors, wardrobe, shop, jobs, say hi) | E | USE |
+| Interact (doors, wardrobe, shop, jobs, say hi, sit, fridge, bed) | E | USE |
+| Hang out with your friend / call them / say bye | H | CALL · HANG OUT · BYE |
+| High five (while hanging out) | G | HIGH 5 |
 | Switch character | Tab / Q | SWITCH |
 | Pause | Esc / P | II |
 

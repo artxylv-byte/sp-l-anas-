@@ -85,6 +85,8 @@ input[type=range]{width:100%;accent-color:var(--pink);height:26px}
 .tbtns{position:absolute;right:14px;bottom:14px;display:grid;grid-template-columns:repeat(4,64px);gap:10px}
 .tbtn{width:64px;height:64px;border-radius:50%;background:rgba(20,22,40,.55);border:2px solid rgba(255,255,255,.4);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1}
 .tbtn.on{background:rgba(255,79,163,.7)}
+.ctx{position:absolute;right:316px;bottom:14px;display:flex;flex-direction:column-reverse;gap:10px}
+.ctx .tbtn{background:rgba(77,163,255,.35)}
 .tbtn.top{position:absolute;width:48px;height:48px}
 #touchPause{top:14px;left:50%;transform:translateX(-50%)}
 #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .35s;z-index:12}
@@ -119,7 +121,7 @@ body.touch .hudBtn{display:none}
     <button class="btn" id="bStudio">Character Studio</button>
     <button class="btn" id="bQuality">Graphics: High</button>
   </div>
-  <div class="small">PC: WASD move · Mouse look · Shift sprint · Space jump / handbrake · R or left click punch · F enter/exit car · E interact · Tab switch character · Esc pause<br>Phone: left thumb to move, right thumb to look, buttons for actions.</div>
+  <div class="small">PC: WASD move · Mouse look · Shift sprint · Space jump / handbrake · R or left click punch · F enter/exit car · E interact / sit · H hang out with your friend · G high five · Tab switch character · Esc pause<br>Phone: left thumb to move, right thumb to look, buttons for actions.</div>
 </div>
 
 <div id="studio" class="hidden">
@@ -142,7 +144,7 @@ body.touch .hudBtn{display:none}
   <canvas id="minimap" width="360" height="360"></canvas>
   <div id="speedo" class="hidden">0<small>km/h</small></div>
   <div id="toast"></div>
-  <div id="help">WASD move · Shift sprint · Space jump · R / click punch · F car · E interact · Tab switch · Esc pause</div>
+  <div id="help">WASD move · Shift sprint · Space jump · R / click punch · F car · E interact / sit · H hang out · G high five · Tab switch · Esc pause</div>
 </div>
 
 <div id="touch" class="hidden">
@@ -157,6 +159,7 @@ body.touch .hudBtn{display:none}
     <div class="tbtn" data-btn="sprint">RUN</div>
   </div>
   <div class="tbtn top" id="touchPause" data-btn="pause">II</div>
+  <div class="ctx"><div class="tbtn" id="tHang" data-btn="hang">CALL</div><div class="tbtn" id="tHi5" data-btn="hi5" style="display:none">HIGH 5</div></div>
 </div>
 
 <div id="bubbles"></div>

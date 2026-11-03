@@ -197,6 +197,17 @@ export function buildApartment(scene, origin, style) {
   add(box(0.42, 0.02, 0.6, 0.01), mat({ color: '#9aa0a6', metalness: 1, roughness: 0.2 }), 5.62, 0.905, -0.4, 0, { cast: false }); // sink
   add(box(0.5, 0.012, 0.6, 0.005), mat({ color: '#0b0b0b', roughness: 0.2 }), 5.62, 0.905, -2.6, 0, { cast: false }); // hob
   add(box(0.72, 1.85, 0.72, 0.03), mat({ color: '#d9dcdf', metalness: 0.6, roughness: 0.35 }), 5.62, 0.925, -4.55);
+  // fridge: a lit inside (shelves with drinks) behind a door that swings open
+  const fzC = document.createElement('canvas'); fzC.width = 64; fzC.height = 160;
+  { const x = fzC.getContext('2d'); x.fillStyle = '#f4f7fa'; x.fillRect(0, 0, 64, 160);
+    for (let i = 1; i < 4; i++) { x.fillStyle = '#c9d3dc'; x.fillRect(0, i * 40 - 2, 64, 3); }
+    const cols = ['#d63b3b', '#3b7bd6', '#3bb36a', '#f2b632', '#ffffff', '#8a5ab8'];
+    for (let i = 0; i < 4; i++) for (let k = 0; k < 4; k++) { x.fillStyle = cols[(i * 3 + k) % cols.length]; x.fillRect(6 + k * 14, i * 40 + 12, 9, 24); } }
+  const fzT = new THREE.CanvasTexture(fzC); fzT.colorSpace = THREE.SRGBColorSpace;
+  add(new THREE.PlaneGeometry(0.66, 1.75), new THREE.MeshStandardMaterial({ map: fzT, emissive: '#ffffff', emissiveMap: fzT, emissiveIntensity: 0.55 }), 5.255, 0.93, -4.55, -Math.PI / 2, { cast: false });
+  const fridgeDoor = new THREE.Group(); fridgeDoor.position.set(5.235, 0.925, -4.91); g.add(fridgeDoor);
+  const fd = new THREE.Mesh(box(0.04, 1.83, 0.72, 0.02), mat({ color: '#e3e6e9', metalness: 0.6, roughness: 0.3 })); fd.position.set(0, 0, 0.36); fd.castShadow = true; fridgeDoor.add(fd);
+  const fh = new THREE.Mesh(box(0.03, 0.5, 0.03, 0.01), mat({ color: '#9aa0a6', metalness: 1, roughness: 0.2 })); fh.position.set(-0.04, 0.2, 0.66); fridgeDoor.add(fh);
   solid(5.05, 6, -4.3, 1.05, 0.9); solid(5.2, 6, -5, -4.15, 1.9);
   // dining table + chairs
   add(box(1.2, 0.04, 0.8, 0.01), woodM, 2.2, 0.75, 1.6);
@@ -280,8 +291,19 @@ export function buildApartment(scene, origin, style) {
   for (const s of spots) { s.world = s.pos.clone().add(origin); s.lookW = s.look.clone().add(origin); s.pathW = (s.path || []).map(([x, z]) => new THREE.Vector3(x, 0, z).add(origin)); }
 
   const hub = new THREE.Vector3(0.6, 0, 1.0).add(origin);
+  // places to sit (pos = where you sit, stand = where you get up; pair = the seat next to / opposite it)
+  const W3 = (x, z) => new THREE.Vector3(x, 0, z).add(origin);
+  const seats = [
+    { name: 'sofa', pos: W3(-2.3, 0.45), yaw: -Math.PI / 2, stand: W3(-3.15, 0.45), pair: 1 },
+    { name: 'sofa', pos: W3(-2.3, -0.45), yaw: -Math.PI / 2, stand: W3(-3.15, -0.45), pair: 0 },
+    { name: 'chair', pos: W3(2.2, 0.9), yaw: 0, stand: W3(2.2, 0.3), pair: 3 },
+    { name: 'chair', pos: W3(2.2, 2.3), yaw: Math.PI, stand: W3(2.2, 2.9), pair: 2 },
+  ];
+  if (style.desk) seats.push({ name: 'desk', pos: W3(-3.5, D / 2 - 1.1), yaw: 0, stand: W3(-3.5, D / 2 - 1.75), pair: -1 });
   const apt = {
-    group: g, colliders, spots, hub, origin: origin.clone(),
+    group: g, colliders, spots, hub, origin: origin.clone(), seats,
+    fridge: { pos: W3(4.7, -4.55), yaw: Math.PI / 2, door: fridgeDoor, open: 0, want: 0 },
+    bed: { pos: W3(2.15, -3.3), yaw: Math.PI / 2 },
     bounds: { minX: origin.x - W / 2, maxX: origin.x + W / 2, minZ: origin.z - D / 2, maxZ: origin.z + D / 2, y: origin.y },
     entry: new THREE.Vector3(4.5, 0, D / 2 - 0.9).add(origin), // where you appear when coming in
     exit: new THREE.Vector3(4.5, 0, D / 2 - 0.45).add(origin),
@@ -289,6 +311,7 @@ export function buildApartment(scene, origin, style) {
     lights: [new THREE.Vector3(-3, H - 0.4, 0).add(origin), new THREE.Vector3(2.8, H - 0.4, -1.5).add(origin)],
     update(dt, dayAmount) {
       nightView.opacity = 1 - dayAmount;
+      const f = apt.fridge; f.open += (f.want - f.open) * Math.min(1, dt * 6); f.door.rotation.y = -f.open * 1.75;
       // simple animated TV picture
       apt.tvT = (apt.tvT || 0) + dt;
       if ((apt.tvF = (apt.tvF || 0) + dt) > 0.12) {

@@ -255,9 +255,10 @@ export class Population {
         a.speed = speed; a.lookAt = null;
         if (p.t <= 0) this.rejoin(p);
       } else if (p.greetT > 0) {
-        // stop, face the player and wave
+        // stop, face the player and wave (leaning down a little if they're much taller)
         p.greetT -= dt;
         a.wave = p.greetT > 0.7;
+        a.bend = eye && p.state !== 'sit' ? Math.min(1, Math.max(0, (p.pos.y + (p.h.eyeY || 1.6) - eye.y - 0.05) / 0.22)) : 0;
         if (player && p.state !== 'sit') p.yaw += wrap(Math.atan2(player.pos.x - p.pos.x, player.pos.z - p.pos.z) - p.yaw) * Math.min(1, dt * 6);
       } else if (p.state === 'walk') {
         a.wave = false;
@@ -282,6 +283,7 @@ export class Population {
         p.yaw += wrap(Math.atan2(dx, dz) - p.yaw) * Math.min(1, dt * 8);
         a.speed = speed;
       } else a.wave = false;
+      if (!(p.greetT > 0)) a.bend = 0;
       // ---- personal space: the player bumps into people (and sprinting into them knocks them over)
       if (player && p.state !== 'down') {
         const dx = p.pos.x - player.pos.x, dz = p.pos.z - player.pos.z, dd = Math.hypot(dx, dz);
