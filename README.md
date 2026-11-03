@@ -13,6 +13,8 @@ It runs on **Windows 10/11 PCs** and **Android phones** (and anything else with 
   - **Mix-and-match clothing:** any of 12 tops (T-shirts, shirts, blouse, jacket over shirt, suit jacket and more) with any of 8 bottoms (jeans, skinny jeans, suit trousers, overalls, shorts, skirt, leggings) and 6 pairs of shoes. Each piece keeps its original fabric photo ("Orig") or can be re-dyed in any colour.
   - **Extras:** watch, cross necklace, bracelet, earrings, glasses
   - Looks are saved automatically. You can also change clothes in-game at the **THREADS** clothing store.
+- **Their own homes.** Arturs and Paula live in apartments across the street from each other (blue and pink doors, also on the minimap). The character you're *not* playing is at home living their life, with their full customised look: watching TV on the sofa, cooking, looking out of the window, or at a gaming desk (Arturs) or vanity mirror (Paula). Walk in through their door to visit them. They'll greet you, and you can talk to them. Pressing **Tab** sends your current character home and puts you in control of the other one in their apartment. Each apartment has a wardrobe where you can change clothes.
+- **A living city:** realistic pedestrians walk the sidewalks around you, people chat in small groups, others relax on park and beach benches. They glance at you when you walk past, and you can press **E** to say hi (they wave back with a speech bubble).
 - **Port Solara city:** a downtown with glass towers, pastel neighbourhoods, parks, a beach promenade with palm trees, the ocean, and neon signs.
 - **Day/night cycle:** a real sky, a moving sun, shadows, building windows that light up at night, street lamps, car headlights and bloom.
 - **Cars:** get into any car (parked or in traffic) and drive it. Traffic drives around the city and pedestrians walk the sidewalks.
@@ -26,7 +28,7 @@ It runs on **Windows 10/11 PCs** and **Android phones** (and anything else with 
 | Sprint | Shift | RUN (or push the stick all the way) |
 | Jump / handbrake | Space | JUMP |
 | Enter / exit car | F | CAR |
-| Interact (store, jobs) | E | USE |
+| Interact (doors, wardrobe, store, jobs, say hi) | E | USE |
 | Switch character | Tab / Q | SWITCH |
 | Pause | Esc / P | II |
 
@@ -56,7 +58,9 @@ The code is in `src/`:
 - `character.js` – appearance options, Arturs' and Paula's defaults, random pedestrians
 - `world.js` – the city, sky, ocean and day/night cycle
 - `vehicles.js` – car models, driving and traffic
-- `npcs.js` – pedestrians
+- `npcs.js` – pedestrians, chatting groups, bench sitters, greetings
+- `interiors.js` – the two furnished apartments
+- `residents.js` – what the off-duty character does at home
 - `main.js` – game loop, Character Studio UI, HUD, missions
 - `input.js` – keyboard, mouse and touch
 

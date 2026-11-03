@@ -215,9 +215,12 @@ export class MHuman {
     this.tails = Object.fromEntries(s.bones.map((b) => [b.name, jointPos(pos, b.tail)]));
     rig.updateMatrixWorld(true);
     const skeleton = (this.skeleton = new THREE.Skeleton(bones));
-    const addSkinned = (geo, mat, { shadow = true, order = 0 } = {}) => {
+    const cullSphere = new THREE.Sphere(new THREE.Vector3(0, 0, 0), 11); // generous bounds (asset units) so off-screen people are skipped
+    const addSkinned = (geo, mat, { shadow = true, order = 0, small = false } = {}) => {
       const m = new THREE.SkinnedMesh(geo, mat);
-      m.castShadow = shadow; m.receiveShadow = true; m.frustumCulled = false; m.renderOrder = order;
+      m.castShadow = shadow; m.receiveShadow = true; m.renderOrder = order;
+      m.frustumCulled = true; m.boundingSphere = cullSphere.clone();
+      m.userData.small = small;
       rig.add(m); m.bind(skeleton, new THREE.Matrix4());
       return m;
     };
@@ -258,7 +261,7 @@ export class MHuman {
       const si = new Uint16Array(p.n * 4), sw = new Float32Array(p.n * 4);
       for (let i = 0; i < p.n; i++) { si[i * 4] = s.boneIndex[fp[i * 3] > 0 ? 'eye.L' : 'eye.R']; sw[i * 4] = 1; }
       const eyeName = s.m.eyes[L.eyes] ? L.eyes : 'brown';
-      const em = addProxy(p, MM.eyeMaterial(s.m.eyes[eyeName]), { weights: { si, sw }, shadow: false });
+      const em = addProxy(p, MM.eyeMaterial(s.m.eyes[eyeName]), { weights: { si, sw }, shadow: false, small: true });
       // eyeballs are spheres: use radial normals (robust against flipped faces)
       const ga = em.geometry.attributes.position, na = em.geometry.attributes.normal;
       const cL = this.heads['eye.L'], cR = this.heads['eye.R'], tmp = new THREE.Vector3();
@@ -270,9 +273,9 @@ export class MHuman {
     }
     const hairCol = new THREE.Color(L.hairColor || '#3a2a1f');
     const brow = proxy(L.browStyle || (female ? 'eyebrow010' : 'eyebrow002')) || proxy('eyebrow001');
-    addProxy(brow, MM.cardMaterial(brow.d.tex, hairCol.clone().multiplyScalar(0.75), { alphaTest: 0.35, aniso: 0 }), { shadow: false, order: 2 });
+    addProxy(brow, MM.cardMaterial(brow.d.tex, hairCol.clone().multiplyScalar(0.75), { alphaTest: 0.35, aniso: 0 }), { shadow: false, order: 2, small: true });
     const lash = proxy(female ? 'eyelashes03' : 'eyelashes01') || proxy('eyelashes01');
-    addProxy(lash, MM.cardMaterial(lash.d.tex, '#120c0a', { alphaTest: 0.35, aniso: 0 }), { shadow: false, order: 3 });
+    addProxy(lash, MM.cardMaterial(lash.d.tex, '#120c0a', { alphaTest: 0.35, aniso: 0 }), { shadow: false, order: 3, small: true });
     if (L.hairStyle && L.hairStyle !== 'bald') {
       const hp = proxy(L.hairStyle);
       if (hp) addProxy(hp, MM.cardMaterial(hp.d.tex, hairCol, { alphaTest: 0.42 }), { shadow: true, order: 4 });

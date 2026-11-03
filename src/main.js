@@ -6,7 +6,9 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { Human, DEFAULTS, OPTIONS, PALETTES, randomAppearance, sanitize } from './character.js';
 import { World, CURB, HALF, N, ROAD, BLOCK, CELL, BEACH_X, roadLine } from './world.js';
 import { Car, Traffic, CAR_COLORS, carLightMats } from './vehicles.js';
-import { Pedestrians } from './npcs.js';
+import { Population, GREETINGS } from './npcs.js';
+import { buildApartment } from './interiors.js';
+import { Resident } from './residents.js';
 import { Input } from './input.js';
 
 const $ = (id) => document.getElementById(id);
@@ -19,7 +21,7 @@ const store = {
 const isTouch = matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window;
 if (isTouch) document.body.classList.add('touch');
 let qualityName = store.get('quality', isTouch ? 'low' : 'high');
-const Q = { high: qualityName === 'high', shadows: true, peds: qualityName === 'high' ? 22 : 10, cars: qualityName === 'high' ? 22 : 12 };
+const Q = { high: qualityName === 'high', shadows: true, peds: qualityName === 'high' ? 20 : 9, pedVariants: qualityName === 'high' ? 7 : 4, groups: qualityName === 'high' ? 6 : 3, sitters: qualityName === 'high' ? 7 : 3, cars: qualityName === 'high' ? 22 : 12 };
 
 const canvas = $('c');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
@@ -79,18 +81,80 @@ const studio = { scene: new THREE.Scene(), cam: new THREE.PerspectiveCamera(32, 
 let world, traffic, peds, composer, bloom;
 const game = { started: false, paused: false, active: 'arturs', money: store.get('money', 0), cars: [], pickups: [], mission: null, camYaw: 0, camPitch: 0.25, lastLook: 0, toastT: 0, timeMode: 0 };
 
+const APT_STYLE = {
+  arturs: { floor: '#8a6444', wall: '#e9e6e1', accent: '#2f3e52', door: '#2b2b2b', rug: '#2b2f36', rug2: '#7f8fa6', sofa: '#3b3f45', pillow: '#d22d3d',
+    furniture: '#5a4030', cabinet: '#2c2f33', counter: '#e8e6e1', chair: '#1a1a1a', duvet: '#3a4a66', desk: true, seed: 11 },
+  paula: { floor: '#b89470', wall: '#f3eee6', accent: '#a8b8a0', door: '#e9e1d4', rug: '#efe6d6', rug2: '#c9a27a', sofa: '#e6dccb', pillow: '#c98378',
+    furniture: '#c8a27a', cabinet: '#f3efe8', counter: '#2b2b2b', chair: '#d8c3a5', duvet: '#f2c7cf', desk: false, seed: 23 },
+};
+const otherOf = (who) => (who === 'arturs' ? 'paula' : 'arturs');
+const poss = (name) => (/s$/i.test(name) ? name + "'" : name + "'s"); // Arturs' / Paula's
+
+function sendHome(P) {
+  if (P.car) exitCar(P);
+  const home = game.homes[P.who];
+  P.resident = new Resident(P, home.apt, { onGreet: () => say(P, `Hey ${looks[game.active].name}! 👋`, 2.6) });
+  P.resident.place();
+}
+
+function fade(on) { $('fade').style.opacity = on ? 1 : 0; }
+function teleport(P, pos, yaw) {
+  if (game.switching) return;
+  game.switching = true; fade(true);
+  setTimeout(() => {
+    P.pos.copy(pos); P.pos.y = world.groundHeight(pos.x, pos.z); P.vel.set(0, 0, 0); P.yaw = yaw; P.grounded = true;
+    game.camYaw = yaw; game.camPitch = 0.22;
+    updateCamera(0.016, true);
+    fade(false); game.switching = false;
+  }, 380);
+}
+
+// ---- speech bubbles above people's heads
+const bubbles = [];
+function say(ent, text, secs = 2.6) {
+  for (const b of bubbles.filter((b) => b.ent === ent)) { b.el.remove(); bubbles.splice(bubbles.indexOf(b), 1); }
+  const el = document.createElement('div'); el.className = 'bubble'; el.textContent = text;
+  $('bubbles').appendChild(el);
+  bubbles.push({ el, ent, t: secs });
+}
+function updateBubbles(dt) {
+  const v = new THREE.Vector3();
+  for (let i = bubbles.length - 1; i >= 0; i--) {
+    const b = bubbles[i];
+    b.t -= dt;
+    if (b.t <= 0) { b.el.remove(); bubbles.splice(i, 1); continue; }
+    const pos = b.ent.pos, hgt = (b.ent.h ? b.ent.h.look.height : looks[b.ent.who].height) || 170;
+    v.set(pos.x, pos.y + hgt / 100 * 1.08 + (b.ent.human && b.ent.human.anim.sit ? -0.45 : 0) + (b.ent.h && b.ent.h.anim.sit ? -0.45 : 0), pos.z).project(camera);
+    const far = camera.position.distanceTo(pos) > 45 || (b.ent.h && !b.ent.h.root.visible);
+    const vis = !far && v.z < 1 && Math.abs(v.x) < 1.1 && Math.abs(v.y) < 1.1;
+    b.el.style.display = vis ? 'block' : 'none';
+    b.el.style.left = ((v.x + 1) / 2) * innerWidth + 'px'; b.el.style.top = ((1 - v.y) / 2) * innerHeight + 'px';
+    b.el.style.opacity = Math.min(1, b.t * 3);
+  }
+}
+
 function makePlayer(who, pos) {
   const h = new Human(looks[who]);
-  return { who, human: h, pos: pos.clone(), vel: new THREE.Vector3(), yaw: Math.PI, grounded: true, car: null };
+  return { who, human: h, pos: pos.clone(), vel: new THREE.Vector3(), yaw: Math.PI, grounded: true, car: null, resident: null };
 }
 
 function buildGame() {
   const scene = (game.scene = new THREE.Scene());
   world = new World(scene, renderer, Q);
   const sp = world.places.spawn;
-  game.players = { arturs: makePlayer('arturs', sp), paula: makePlayer('paula', world.places.spawn2) };
+  game.players = { arturs: makePlayer('arturs', sp), paula: makePlayer('paula', sp) };
   for (const p of Object.values(game.players)) scene.add(p.human.root);
   game.players.arturs.yaw = game.players.paula.yaw = -Math.PI / 2; // face the road (west)
+  // each character has their own apartment (rooms live away from the city; the street doors lead inside)
+  game.homes = {
+    arturs: { apt: buildApartment(scene, new THREE.Vector3(1800, 0, -1800), APT_STYLE.arturs), door: world.places.homeArturs },
+    paula: { apt: buildApartment(scene, new THREE.Vector3(1800, 0, -1740), APT_STYLE.paula), door: world.places.homePaula },
+  };
+  for (const hm of Object.values(game.homes)) world.addInterior(hm.apt);
+  game.roomLights = [new THREE.PointLight('#ffd9a8', 0, 12, 1.4), new THREE.PointLight('#ffe4c4', 0, 12, 1.4)];
+  for (const l of game.roomLights) scene.add(l);
+  // the character you are not playing is at home
+  sendHome(game.players.paula);
   // parked cars near spawn
   const parked = [['sports', '#ff4fa3', 0], ['suv', '#141414', 1], ['sedan', '#2e86de', 2], ['sports', '#f1c40f', 3]];
   for (const [t, c, k] of parked) {
@@ -99,7 +163,7 @@ function buildGame() {
   }
   traffic = new Traffic(scene, world, Q.cars);
   game.cars.push(...traffic.cars);
-  peds = new Pedestrians(scene, world, Q.peds);
+  peds = new Population(scene, world, { walkers: Q.peds, variants: Q.pedVariants, groups: Q.groups, sitters: Q.sitters, shadows: Q.high, focus: sp });
   // cash pickups
   const cashM = new THREE.MeshStandardMaterial({ color: '#4fd06b', emissive: '#2fa04b', emissiveIntensity: 0.6, roughness: 0.4 });
   for (let k = 0; k < 30; k++) {
@@ -153,6 +217,19 @@ function drawStaticMap() {
 }
 function drawMinimap(focus, heading) {
   const S = mm.width, R = 110; // metres visible radius
+  const inside = world.interiorAt(focus.x, focus.z);
+  if (inside) {
+    mmx.save(); mmx.clearRect(0, 0, S, S);
+    mmx.beginPath(); mmx.arc(S / 2, S / 2, S / 2, 0, Math.PI * 2); mmx.clip();
+    mmx.fillStyle = '#2b2530'; mmx.fillRect(0, 0, S, S);
+    const who = Object.keys(game.homes).find((w) => game.homes[w].apt.bounds === inside);
+    mmx.fillStyle = '#fff'; mmx.font = 'bold 34px Segoe UI, Arial'; mmx.textAlign = 'center';
+    mmx.fillText('HOME', S / 2, S / 2 - 6);
+    mmx.font = '26px Segoe UI, Arial'; mmx.fillStyle = who === 'arturs' ? '#4da3ff' : '#ff7ac0';
+    mmx.fillText(poss(looks[who].name) + ' apartment', S / 2, S / 2 + 30);
+    mmx.restore();
+    return;
+  }
   const k = S / 2 / R;
   mmx.save();
   mmx.clearRect(0, 0, S, S);
@@ -166,8 +243,7 @@ function drawMinimap(focus, heading) {
   const dot = (p, col, r) => { mmx.fillStyle = col; mmx.beginPath(); mmx.arc((p.x - MAP_MIN) * MAP_PX, (p.z - MAP_MIN) * MAP_PX, r * MAP_PX / k, 0, Math.PI * 2); mmx.fill(); };
   for (const pk of game.pickups) if (pk.active) dot(pk.m.position, '#7cff6b', 3);
   dot(world.places.store.pos, '#ff4fa3', 7); dot(world.places.jobs.pos, '#ffd23f', 7);
-  const other = game.players[game.active === 'arturs' ? 'paula' : 'arturs'];
-  dot(other.car ? other.car.pos : other.pos, '#40e0ff', 6);
+  dot(world.places.homeArturs.pos, '#4da3ff', 7); dot(world.places.homePaula.pos, '#ff7ac0', 7);
   if (game.mission) dot(game.mission.dest, '#ffd23f', 9);
   mmx.restore();
   // player arrow
@@ -198,6 +274,7 @@ const key = (k) => (input.isTouch ? '' : `<kbd>${k}</kbd>`);
 function collidePerson(pos, r = 0.35) {
   for (const b of world.colliders) {
     if (pos.y > b.h - 0.3) continue;
+    if (b.minY !== undefined && pos.y + 1.0 < b.minY) continue; // ceilings
     const qx = Math.max(b.minX, Math.min(pos.x, b.maxX)), qz = Math.max(b.minZ, Math.min(pos.z, b.maxZ));
     const dx = pos.x - qx, dz = pos.z - qz, d2 = dx * dx + dz * dz;
     if (d2 < r * r) {
@@ -215,6 +292,7 @@ function collidePerson(pos, r = 0.35) {
       else pos.add(new THREE.Vector3(f.z, 0, -f.x).multiplyScalar(Math.sign(side) * pz));
     }
   }
+  if (world.interiorAt(pos.x, pos.z)) return;
   pos.x = THREE.MathUtils.clamp(pos.x, -HALF - 60, BEACH_X + 45);
   pos.z = THREE.MathUtils.clamp(pos.z, -HALF - 60, HALF + 60);
 }
@@ -224,7 +302,7 @@ function rayBoxes(o, d, maxT) {
   for (const b of world.colliders) {
     if (b.small) continue;
     let t0 = 0, t1 = best;
-    for (const [oo, dd, mn, mx] of [[o.x, d.x, b.minX, b.maxX], [o.y, d.y, 0, b.h], [o.z, d.z, b.minZ, b.maxZ]]) {
+    for (const [oo, dd, mn, mx] of [[o.x, d.x, b.minX, b.maxX], [o.y, d.y, b.minY || 0, b.h], [o.z, d.z, b.minZ, b.maxZ]]) {
       if (Math.abs(dd) < 1e-6) { if (oo < mn || oo > mx) { t0 = 1; t1 = 0; break; } continue; }
       let a = (mn - oo) / dd, c = (mx - oo) / dd; if (a > c) [a, c] = [c, a];
       t0 = Math.max(t0, a); t1 = Math.min(t1, c); if (t0 > t1) break;
@@ -256,11 +334,24 @@ function exitCar(P) {
 }
 
 function switchCharacter() {
-  game.active = game.active === 'arturs' ? 'paula' : 'arturs';
-  const P = game.players[game.active];
-  game.camYaw = P.car ? P.car.yaw : P.yaw;
-  $('hName').textContent = looks[game.active].name.toUpperCase();
-  toast(looks[game.active].name, 1.2);
+  if (game.switching) return;
+  game.switching = true; fade(true);
+  setTimeout(() => {
+    sendHome(game.players[game.active]);
+    game.active = otherOf(game.active);
+    const P = game.players[game.active];
+    const R = P.resident;
+    // if they were sitting, stand up in front of the seat
+    if (R && R.mode === 'act' && R.spot.pose === 'sit' && R.spot.pathW.length) P.pos.copy(R.spot.pathW[R.spot.pathW.length - 1]);
+    P.resident = null;
+    Object.assign(P.human.anim, { sit: false, wave: false, talk: 0, lookAt: null, speed: 0 });
+    P.vel.set(0, 0, 0); P.grounded = true;
+    game.camYaw = P.yaw; game.camPitch = 0.22;
+    $('hName').textContent = looks[game.active].name.toUpperCase();
+    updateCamera(0.016, true);
+    toast(looks[game.active].name, 1.4);
+    fade(false); game.switching = false;
+  }, 380);
 }
 
 function startMission() {
@@ -327,23 +418,52 @@ function updatePlayer(dt) {
   for (const c of game.cars) { const d = c.pos.distanceTo(P.pos); if (d < nd && !Object.values(game.players).some((o) => o.car === c)) { nd = d; nearCar = c; } }
   if (nearCar) { prompt = `${key('F')} Get in car`; if (input.hit('KeyF', 'btn:car')) { enterCar(P, nearCar); setPrompt(null); return; } }
   const near = (p) => p.pos.distanceTo(P.pos) < 2.0;
-  if (near(world.places.store)) { prompt = `${key('E')} Change clothes at THREADS`; if (input.hit('KeyE', 'btn:interact')) { openStudio('game'); return; } }
+  const use = () => input.hit('KeyE', 'btn:interact');
+  if (near(world.places.store)) { prompt = `${key('E')} Change clothes at THREADS`; if (use()) { openStudio('game'); return; } }
   if (near(world.places.jobs)) {
     prompt = game.mission ? 'Job already active' : `${key('E')} Take a delivery job`;
-    if (!game.mission && input.hit('KeyE', 'btn:interact')) startMission();
+    if (!game.mission && use()) startMission();
+  }
+  // apartment doors on the street
+  for (const [who, hm] of Object.entries(game.homes)) {
+    if (hm.door.pos.distanceTo(P.pos) < 1.8) {
+      prompt = `${key('E')} ${who === P.who ? 'Go home' : `Visit ${poss(looks[who].name)} apartment`}`;
+      if (use()) { teleport(P, hm.apt.entry, Math.PI); setPrompt(null); return; }
+    }
+  }
+  // inside an apartment: way out + wardrobe
+  const inside = world.interiorAt(P.pos.x, P.pos.z);
+  if (inside) {
+    const hm = Object.values(game.homes).find((h) => h.apt.bounds === inside);
+    if (hm.apt.exit.distanceTo(P.pos) < 1.3) { prompt = `${key('E')} Go outside`; if (use()) { teleport(P, hm.door.pos, hm.door.yaw); setPrompt(null); return; } }
+    else if (hm.apt.wardrobe.distanceTo(P.pos) < 1.5) { prompt = `${key('E')} Open the wardrobe`; if (use()) { openStudio('game'); return; } }
+  }
+  // say hi to the other character or to people in the street
+  const other = game.players[otherOf(P.who)];
+  if (!prompt && other.resident && other.pos.distanceTo(P.pos) < 2.6) {
+    prompt = `${key('E')} Talk to ${looks[other.who].name}`;
+    if (use()) {
+      other.resident.waveT = 2.2;
+      const lines = [`Hey ${looks[P.who].name}! What's up?`, 'Want to hang out later?', 'I was just chilling here 😄', 'Nice outfit today!', 'Grab something from the fridge if you want!'];
+      say(other, lines[Math.floor(Math.random() * lines.length)], 3);
+    }
+  }
+  if (!prompt && !inside) {
+    const n = peds.nearest(P.pos, 2.4);
+    if (n) { prompt = `${key('E')} Say hi`; if (use()) { say(P, 'Hi!', 1.4); say(n, peds.greet(n), 2.8); } }
   }
   setPrompt(prompt);
 }
 
 function updateCharacters(dt) {
+  const active = game.players[game.active];
   for (const P of Object.values(game.players)) {
     const h = P.human;
     if (P.car) { h.anim.speed = 0; h.anim.sit = true; h.update(dt); continue; }
-    if (P.who !== game.active) { P.vel.multiplyScalar(0.8); P.pos.y = world.groundHeight(P.pos.x, P.pos.z); }
+    if (P.resident) P.resident.update(dt, active.car ? null : active);
+    else { h.anim.speed = Math.hypot(P.vel.x, P.vel.z); h.anim.air = !P.grounded; }
     h.root.position.copy(P.pos);
     h.root.rotation.y = P.yaw;
-    h.anim.speed = Math.hypot(P.vel.x, P.vel.z);
-    h.anim.air = !P.grounded && P.who === game.active;
     h.update(dt);
   }
 }
@@ -358,11 +478,14 @@ function updateCamera(dt, snap = false) {
     game.camYaw += d * Math.min(1, dt * 2.5);
     game.camPitch += (0.18 - game.camPitch) * Math.min(1, dt * 2);
   }
-  const dist = inCar ? 7.5 + Math.min(3, Math.abs(P.car.speed) * 0.06) : 3.6;
+  const indoor = !inCar && world.interiorAt(P.pos.x, P.pos.z);
+  if (indoor) game.camPitch = Math.min(game.camPitch, 0.6);
+  const dist = inCar ? 7.5 + Math.min(3, Math.abs(P.car.speed) * 0.06) : indoor ? 2.7 : 3.6;
   const dir = new THREE.Vector3(-Math.sin(game.camYaw) * Math.cos(game.camPitch), Math.sin(game.camPitch), -Math.cos(game.camYaw) * Math.cos(game.camPitch));
   const t = rayBoxes(focus, dir, dist);
   const want = focus.clone().addScaledVector(dir, Math.max(0.6, t - 0.3));
   want.y = Math.max(want.y, world.groundHeight(want.x, want.z) + 0.3);
+  if (indoor) want.y = Math.min(want.y, indoor.y + 2.6);
   const far = camTarget.distanceTo(focus) > 30;
   const k = snap ? 1 : Math.min(1, dt * (far ? 3 : 14));
   camTarget.lerp(focus, k); camPos.lerp(want, snap ? 1 : Math.min(1, dt * (far ? 3 : 18)));
@@ -378,13 +501,22 @@ function updateGame(dt) {
   if (!game.started || game.paused) return;
   const P = game.players[game.active];
   // cars
-  const obstacles = [...game.cars, ...Object.values(game.players).filter((p) => !p.car).map((p) => p.pos), ...peds.list.map((p) => p.pos)];
+  const obstacles = [...game.cars, ...Object.values(game.players).filter((p) => !p.car && !p.resident).map((p) => p.pos), ...peds.list.filter((p) => p.kind === 'walk').map((p) => p.pos)];
   traffic.update(dt, obstacles);
   for (const c of game.cars) if (c.driver !== 'ai') c.integrate(dt, world, game.cars);
-  peds.update(dt, P.car ? P.car.pos : P.pos, game.cars);
+  peds.update(dt, P.car ? P.car.pos : P.pos, game.cars, P.car ? null : P, camera);
   updateCharacters(dt);
   const focus = P.car ? P.car.pos : P.pos;
+  const inApt = world.interiorAt(focus.x, focus.z);
+  world.indoor = !!inApt;
   world.update(dt, focus, camera);
+  // apartments: TV picture, window view, and warm room lights where you are
+  for (const hm of Object.values(game.homes)) {
+    hm.apt.update(dt, world.dayAmount);
+    if (hm.apt.bounds === inApt) game.roomLights.forEach((l, i) => { l.position.copy(hm.apt.lights[i]); l.intensity = 7 + (1 - world.dayAmount) * 5; });
+  }
+  if (!inApt) game.roomLights.forEach((l) => (l.intensity = 0));
+  updateBubbles(dt);
   const night = 1 - world.dayAmount;
   carLightMats.headMat.emissiveIntensity = 0.3 + night * 3;
   carLightMats.tailMat.emissiveIntensity = 0.4 + night * 2;
@@ -689,4 +821,4 @@ frame();
 
 // PWA offline support
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.__ps = { game, get world() { return world; }, looks, camera, studio };
+window.__ps = { game, get world() { return world; }, get peds() { return peds; }, looks, camera, studio };

@@ -39,6 +39,8 @@ export class World {
     this.time = 18.2; // hours – start at golden hour
     this.timeSpeed = 1 / 60; // game hours per real second (1 day = 24 min)
     this.places = {};
+    this.interiors = []; // apartment rooms (floor height + bounds)
+    this.benches = [];
     this.build();
   }
 
@@ -327,11 +329,84 @@ export class World {
     mk('store', '#ff4fa3', new THREE.Vector3(spawn.x + 0.2, CURB, spawn.z + 10), 'THREADS');
     mk('jobs', '#ffd23f', new THREE.Vector3(spawn.x + 0.2, CURB, spawn.z - 8), 'JOBS');
     this.places.storeBlock = b;
+    // the two apartment entrances face each other across the street
+    const facadeE = roadLine(4) + ROAD / 2 + SIDEWALK + 2.5; // west face of block (4,4)
+    const facadeW = roadLine(4) - ROAD / 2 - SIDEWALK - 2.5; // east face of block (3,4)
+    this.homeDoor(facadeE, spawn.z + 23, -1, '#4da3ff', 'ARTURS');
+    this.homeDoor(facadeW, spawn.z + 18, 1, '#ff7ac0', 'PAULA');
+    mk('homeArturs', '#4da3ff', new THREE.Vector3(facadeE - 0.95, CURB, spawn.z + 23), 'ARTURS');
+    mk('homePaula', '#ff7ac0', new THREE.Vector3(facadeW + 0.95, CURB, spawn.z + 18), 'PAULA');
+    this.places.homeArturs.yaw = -Math.PI / 2; this.places.homePaula.yaw = Math.PI / 2; // facing out of the door
+    for (const k of ['homeArturs', 'homePaula']) this.places[k].sign.visible = false; // the door has its own name plate
+    this.buildBenches(spawn);
+  }
+
+  homeDoor(x, z, dir, color, label) {
+    // dir: -1 = door faces west (-x), +1 = faces east (+x)
+    const g = new THREE.Group();
+    g.position.set(x + dir * 0.02, CURB, z);
+    g.rotation.y = dir < 0 ? -Math.PI / 2 : Math.PI / 2;
+    const dark = new THREE.MeshStandardMaterial({ color: '#2b2d31', roughness: 0.5, metalness: 0.4 });
+    const add = (geo, m, px, py, pz) => { const o = new THREE.Mesh(geo, m); o.position.set(px, py, pz); o.castShadow = true; o.receiveShadow = true; g.add(o); return o; };
+    add(new THREE.BoxGeometry(1.7, 2.75, 0.18), dark, 0, 1.375, 0);
+    add(new THREE.BoxGeometry(1.25, 2.3, 0.06), new THREE.MeshPhysicalMaterial({ color: '#16202a', roughness: 0.08, metalness: 0.3 }), 0, 1.15, 0.08);
+    add(new THREE.BoxGeometry(0.04, 0.5, 0.05), new THREE.MeshStandardMaterial({ color: '#c9c9c9', metalness: 1, roughness: 0.3 }), 0.45, 1.1, 0.14);
+    add(new THREE.BoxGeometry(2.3, 0.1, 1.3), new THREE.MeshStandardMaterial({ color, roughness: 0.6 }), 0, 2.95, 0.6);
+    const lamp = new THREE.MeshStandardMaterial({ color: '#fff7e0', emissive: '#ffd89a', emissiveIntensity: 0.6 });
+    this.emissives.push([lamp, 2.5, 0.6]);
+    add(new THREE.BoxGeometry(0.16, 0.24, 0.1), lamp, -1.05, 2.1, 0.12);
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(1.8, 0.45), new THREE.MeshStandardMaterial({ map: TX.signTexture(label, color, 'rgba(10,10,20,0.85)'), emissive: '#ffffff', emissiveMap: TX.signTexture(label, color, 'rgba(10,10,20,0.85)'), emissiveIntensity: 0.6 }));
+    plate.position.set(0, 3.3, 0.12); g.add(plate);
+    this.scene.add(g);
+  }
+
+  buildBenches(spawn) {
+    const spots = [];
+    for (const b of this.blocks) {
+      if (b.type !== 'park') continue;
+      const cx = (b.x0 + b.x1) / 2, cz = (b.z0 + b.z1) / 2;
+      for (let k = 0; k < 4; k++) {
+        const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+        const x = cx + Math.cos(a) * 7.6, z = cz + Math.sin(a) * 7.6;
+        spots.push({ pos: new THREE.Vector3(x, CURB, z), yaw: Math.atan2(cx - x, cz - z) });
+      }
+    }
+    for (let z = -HALF + 20; z < HALF; z += 26) spots.push({ pos: new THREE.Vector3(HALF + ROAD / 2 + 9.5, 0, z), yaw: Math.PI / 2 });
+    spots.push({ pos: new THREE.Vector3(spawn.x + 1.2, CURB, spawn.z + 34), yaw: -Math.PI / 2 });
+    spots.push({ pos: new THREE.Vector3(spawn.x + 1.2, CURB, spawn.z - 16), yaw: -Math.PI / 2 });
+    // bench = wooden slats on dark metal frames (seat faces local +z)
+    const wood = [], metal = [];
+    const bx = (arr, w, h, d, x, y, z) => { const geo = new THREE.BoxGeometry(w, h, d); geo.translate(x, y, z); arr.push(geo); };
+    for (let i = 0; i < 4; i++) bx(wood, 1.8, 0.04, 0.1, 0, 0.45, 0.17 - i * 0.12);
+    for (let i = 0; i < 3; i++) bx(wood, 1.8, 0.09, 0.03, 0, 0.62 + i * 0.13, -0.26 - i * 0.02);
+    for (const x of [-0.78, 0.78]) { bx(metal, 0.05, 0.45, 0.05, x, 0.225, 0.16); bx(metal, 0.05, 0.85, 0.05, x, 0.425, -0.25); bx(metal, 0.05, 0.05, 0.48, x, 0.43, -0.04); }
+    const woodM = new THREE.MeshStandardMaterial({ color: '#8a5a35', roughness: 0.75 });
+    const metalM = new THREE.MeshStandardMaterial({ color: '#25282c', roughness: 0.4, metalness: 0.7 });
+    const dummy = new THREE.Object3D();
+    for (const [geos, m] of [[wood, woodM], [metal, metalM]]) {
+      const inst = new THREE.InstancedMesh(mergeGeometries(geos), m, spots.length);
+      spots.forEach((sp, i) => { dummy.position.copy(sp.pos); dummy.rotation.set(0, sp.yaw, 0); dummy.updateMatrix(); inst.setMatrixAt(i, dummy.matrix); });
+      inst.castShadow = true; inst.receiveShadow = true; this.scene.add(inst);
+    }
+    for (const sp of spots) {
+      this.colliders.push({ minX: sp.pos.x - 0.6, maxX: sp.pos.x + 0.6, minZ: sp.pos.z - 0.6, maxZ: sp.pos.z + 0.6, h: sp.pos.y + 0.9, small: true, bench: true });
+      this.benches.push(sp);
+    }
+  }
+
+  addInterior(apt) {
+    this.interiors.push(apt.bounds);
+    for (const c of apt.colliders) this.colliders.push(c);
+  }
+  interiorAt(x, z) {
+    for (const it of this.interiors) if (x > it.minX && x < it.maxX && z > it.minZ && z < it.maxZ) return it;
+    return null;
   }
 
   isNight() { const t = this.time; return t < 6.3 || t > 19.4; }
 
   groundHeight(x, z) {
+    for (const it of this.interiors) if (x > it.minX - 0.5 && x < it.maxX + 0.5 && z > it.minZ - 0.5 && z < it.maxZ + 0.5) return it.y;
     for (const b of this.blocks) if (x > b.x0 && x < b.x1 && z > b.z0 && z < b.z1) return CURB;
     if (x > BEACH_X) return Math.max(-1.1, -(x - BEACH_X) * 0.022);
     return 0;
@@ -357,7 +432,7 @@ export class World {
     this.sun.target.position.copy(focus);
     this.sun.intensity = day > 0.05 ? 3.0 * day : 0.9;
     this.sun.color.set(day > 0.05 ? new THREE.Color('#fff4e3').lerp(new THREE.Color('#ff9a4a'), golden * 0.85) : new THREE.Color('#8fa8ff'));
-    this.hemi.intensity = 0.9 + 0.2 * day;
+    this.hemi.intensity = (0.9 + 0.2 * day) * (this.indoor ? 0.32 : 1); // rooms don't get the open-sky ambient
     this.hemi.color.set(new THREE.Color('#5a6aa0').lerp(new THREE.Color('#bcd7ff'), day));
     this.hemi.groundColor.set(new THREE.Color('#3a3040').lerp(new THREE.Color('#6a5a4a'), day));
     const fogCol = new THREE.Color('#0a0f1e').lerp(new THREE.Color('#a9bfd8').lerp(new THREE.Color('#e8a07a'), golden * 0.6), day);
@@ -375,12 +450,12 @@ export class World {
       if (this.envRT) this.envRT.dispose();
       this.envRT = this.pmrem.fromScene(this.envScene, 0.02);
       this.scene.environment = this.envRT.texture;
-      this.scene.environmentIntensity = Math.max(0.08, day * 0.9);
     }
+    this.scene.environmentIntensity = Math.max(0.08, day * 0.9) * (this.indoor ? 0.25 : 1);
     // water
     this.waterNormal.offset.x += dt * 0.012; this.waterNormal.offset.y += dt * 0.007;
     // markers
-    for (const k of ['store', 'jobs']) {
+    for (const k of ['store', 'jobs', 'homeArturs', 'homePaula']) {
       const p = this.places[k]; if (!p) continue;
       p.ring.rotation.y += dt; p.ring.material.opacity = 0.25 + Math.sin(performance.now() / 300) * 0.1;
       if (camera) p.sign.quaternion.copy(camera.quaternion);

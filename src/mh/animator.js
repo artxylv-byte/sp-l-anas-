@@ -88,16 +88,30 @@ export class MHAnimator {
     b.s2.rotation.set(0.05 * R - 0.012 * breathe * idle, 0.04 * Math.cos(p) * W, 0);
     b.s1.rotation.set(0.04 * R - 0.008 * breathe * idle + 0.015 * W, 0.03 * Math.cos(p) * W, 0);
 
-    // ---------------- arms (lower them from the bind A-pose, then swing)
+    // ---------------- arms (lower them from the bind A-pose, then swing; optional wave / talking gestures)
+    this.waveAmt = damp(this.waveAmt || 0, a.wave ? 1 : 0, 7, dt);
+    this.talkAmt = damp(this.talkAmt || 0, a.talk || 0, 3, dt);
+    const seed = (this.seed ??= Math.random() * 10);
     const arm = (s, sd, ph) => {
       const swing = (0.32 + 0.45 * R) * Math.cos(ph) * W;
       const rest = 0.11 + 0.02 * breathe * idle + this.air * 0.4 + R * 0.06 - sitT * 0.02;
       b['clav' + s].rotation.set(0, 0, sd * (-0.02 * breathe * idle));
-      b['arm' + s].rotation.set(-0.02 + swing - sitT * 0.85 - this.air * 0.35 + 0.03 * Math.sin(t * 0.9 + sd) * idle,
-        sd * (0.05 + 0.08 * R), -sd * (this.armBind[s] - rest));
-      const flex = 0.22 + 0.22 * Math.max(0, -Math.cos(ph)) * W + 1.25 * R + sitT * 0.55 + this.air * 0.5;
+      let rx = -0.02 + swing - sitT * 0.85 - this.air * 0.35 + 0.03 * Math.sin(t * 0.9 + sd) * idle;
+      let rz = -sd * (this.armBind[s] - rest);
+      let flex = 0.22 + 0.22 * Math.max(0, -Math.cos(ph)) * W + 1.25 * R + sitT * 0.55 + this.air * 0.5;
+      // talking: hands move while chatting
+      const tk = this.talkAmt * Math.max(0, Math.sin(t * 1.9 + seed + sd * 1.7)) * (1 - sitT * 0.5);
+      rx -= tk * 0.22; flex += tk * 0.75;
+      // waving with the right hand
+      const wv = s === 'R' ? this.waveAmt : 0;
+      if (wv > 0.001) {
+        rx += (-1.45 - rx) * wv;
+        rz += (-sd * (this.armBind[s] - 0.5) - rz) * wv;
+        flex += (1.45 + 0.4 * Math.sin(t * 11) - flex) * wv;
+      }
+      b['arm' + s].rotation.set(rx, sd * (0.05 + 0.08 * R), rz);
       b['fore' + s].quaternion.setFromAxisAngle(this.flexAxis[s], flex).multiply(this.foreFix[s]);
-      b['hand' + s].rotation.set(-0.05 - 0.15 * R, 0, sd * (0.05 + 0.1 * R));
+      b['hand' + s].rotation.set(-0.05 - 0.15 * R - tk * 0.3, 0, sd * (0.05 + 0.1 * R));
     };
     arm('L', 1, p + Math.PI); arm('R', -1, p);
 
