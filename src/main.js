@@ -378,6 +378,83 @@ function highFive(P, F) {
   P.hi5T = F.hi5T = 0.9; P.human.anim.hi5 = F.human.anim.hi5 = true;
   schedule(0.45, () => { say(P, '✋', 1); say(F, pick(['Up top! ✋', 'Nice! 🙌', 'Yesss! ✋'])); game.shake = Math.max(game.shake, 0.12); });
 }
+// comparing heights: they stand back to back and their heights show up in cm
+function heightSprite(text, color, w = 0.78) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 112;
+  const x = c.getContext('2d');
+  x.fillStyle = 'rgba(12,14,24,0.8)'; x.beginPath(); x.moveTo(24, 6); x.arcTo(506, 6, 506, 106, 22); x.arcTo(506, 106, 6, 106, 22); x.arcTo(6, 106, 6, 6, 22); x.arcTo(6, 6, 506, 6, 22); x.fill();
+  x.font = 'bold 56px Segoe UI, Arial'; x.fillStyle = color; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText(text, 256, 60);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, depthTest: false, transparent: true }));
+  sp.scale.set(w, w * 0.22, 1); sp.renderOrder = 12;
+  return sp;
+}
+const HCOL = { arturs: '#4da3ff', paula: '#ff7ac0' };
+function compareHeights(P, F) {
+  if (game.measure || P.car || F.riding || game.switching) return;
+  if (P.seat) standUp(P);
+  if (F.seat) standUp(F);
+  F.goSeat = null; dropDrink(P); dropDrink(F);
+  const R = F.resident; F.resident = null; // pause their routine at home for a moment
+  // back to back, with room behind for the friend
+  let yaw = P.yaw;
+  for (const t of [0, Math.PI / 2, -Math.PI / 2, Math.PI]) {
+    const y = P.yaw + t, x = P.pos.x - Math.sin(y) * 0.34, z = P.pos.z - Math.cos(y) * 0.34;
+    if (!world.query(x, z, 0.4).some((b) => !b.bound && x > b.minX - 0.25 && x < b.maxX + 0.25 && z > b.minZ - 0.25 && z < b.maxZ + 0.25 && b.h > P.pos.y + 0.3 && !(b.minY > P.pos.y + 2))) { yaw = y; break; }
+  }
+  const fx = Math.sin(yaw), fz = Math.cos(yaw), M = P.pos.clone();
+  P.yaw = yaw; F.yaw = yaw + Math.PI;
+  F.pos.set(M.x - fx * 0.34, M.y, M.z - fz * 0.34); F.vel.set(0, 0, 0); P.vel.set(0, 0, 0);
+  const mid = new THREE.Vector3(M.x - fx * 0.17, M.y, M.z - fz * 0.17);
+  Object.assign(F.human.anim, { sit: false, wave: false, talk: 0, driving: false, speed: 0, lookAt: null, bend: 0 });
+  Object.assign(P.human.anim, { speed: 0, lookAt: null, bend: 0 });
+  const hP = Math.round(looks[P.who].height), hF = Math.round(looks[F.who].height);
+  const g = new THREE.Group();
+  for (const [Q, h, side] of [[P, hP, 1], [F, hF, -1]]) {
+    const y = M.y + h / 100;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(0.03, 0.012, 1.05), new THREE.MeshBasicMaterial({ color: HCOL[Q.who], depthTest: false, transparent: true }));
+    bar.position.set(mid.x, y, mid.z); bar.rotation.y = yaw; bar.renderOrder = 11; g.add(bar);
+    const lab = heightSprite(`${looks[Q.who].name} · ${h} cm`, HCOL[Q.who]);
+    lab.position.set(mid.x + fx * 0.78 * side, y + 0.02, mid.z + fz * 0.78 * side); g.add(lab);
+  }
+  const diff = hP - hF;
+  const d = heightSprite(Math.abs(diff) < 2 ? 'Same height!' : `${Math.abs(diff)} cm difference`, '#ffd23f', 0.7);
+  d.position.set(mid.x, M.y + Math.max(hP, hF) / 100 + 0.32, mid.z); g.add(d);
+  g.visible = false; game.scene.add(g);
+  game.camYaw = yaw + Math.PI / 2 + 0.18; game.camPitch = 0.06;
+  game.measure = { t: 0, P, F, g, R, diff, focus: new THREE.Vector3(mid.x, M.y + 1.2, mid.z) };
+}
+function updateMeasure(dt) {
+  const m = game.measure; if (!m) return;
+  m.t += dt;
+  const { P, F, diff } = m;
+  m.g.visible = m.t > 0.5;
+  for (const Q of [P, F]) { Q.vel.set(0, 0, 0); Q.human.anim.speed = 0; }
+  const tall = Math.abs(diff) < 2 ? null : diff > 0 ? P : F, short = tall === P ? F : P;
+  if (!m.s1 && m.t > 1.0) {
+    m.s1 = true;
+    if (!tall) { say(P, pick(["No way, we're exactly the same! 😮", 'Twins?! 😄'])); toast('Exactly the same height!', 2.5); }
+    else {
+      toast(`${looks[tall.who].name} is ${Math.abs(diff)} cm taller`, 2.8);
+      say(tall, Math.abs(diff) > 25 ? pick(['Wow, the view from up here 😎', 'I can see the top of your head 😂']) : pick(["Told you I'm taller 😎", 'Still taller! 😄', 'Not even close 😏', 'Ha! Measured and confirmed 📏']), 2.4);
+    }
+  }
+  if (!m.s2 && m.t > 2.7) {
+    m.s2 = true;
+    if (!tall) say(F, 'Rematch next year! 📏', 2.2);
+    else say(short, Math.abs(diff) > 25 ? pick(['Are you standing on your toes?! 😂', 'Okay okay, you win… this year 😤']) : pick(["Hey! I'm not that short 😤", "One day I'll catch up 😄", "Height isn't everything! 😄", "You're wearing thick shoes, that's cheating 😂"]), 2.4);
+  }
+  if (m.t > 4.8) {
+    game.scene.remove(m.g);
+    P.yaw = Math.atan2(F.pos.x - P.pos.x, F.pos.z - P.pos.z); F.yaw = P.yaw + Math.PI;
+    if (m.R) { // back to what they were doing at home
+      F.resident = m.R; const R = m.R;
+      R.mode = 'walk'; R.next = R.spot; R.path = [...R.spot.pathW, R.spot.world].map((v) => v.clone()); F.human.anim.sit = false;
+    }
+    game.measure = null;
+  }
+}
+
 // how much the taller one leans down to talk to someone shorter (or sitting) close by
 function bendFor(me, eyeTarget, dist) {
   if (!eyeTarget || dist > 2.2 || me.seat) return 0;
@@ -400,6 +477,7 @@ function updateFriend(dt, P) {
     if (F.leaving <= 0) sendHome(F);
     return;
   }
+  if (game.measure) { a.speed = 0; F.vel.set(0, 0, 0); return; }
   const H = game.hangout; if (!H) return;
   // chatting about where you are
   if ((H.chatT -= dt) <= 0) { H.chatT = 18 + Math.random() * 16; say(F, friendLine(P, F), 3); H.talkT = 3; }
@@ -775,6 +853,8 @@ function updatePlayer(dt) {
     else startHangout(!(F.resident && F.pos.distanceTo(P.pos) < 3));
   }
   if (input.hit('KeyG', 'btn:hi5') && game.hangout && !P.car && !P.seat) highFive(P, F);
+  if (input.hit('KeyC', 'btn:height') && !P.car && !F.riding && F.pos.distanceTo(P.pos) < 3 && (F.resident || game.hangout)) compareHeights(P, F);
+  if (game.measure) { setPrompt(null); P.vel.set(0, 0, 0); return; }
 
   if (P.car) {
     const car = P.car;
@@ -880,7 +960,7 @@ function updatePlayer(dt) {
   const friendNear = !other.riding && other.pos.distanceTo(P.pos) < 2.6 && (other.resident || game.hangout);
   if (!prompt) { const seat = nearestSeat(P); if (seat && Math.min(seat.pos.distanceTo(P.pos), seat.stand.distanceTo(P.pos)) < 0.9) { prompt = `${key('E')} Sit down`; if (use()) { sitDown(P, seat); setPrompt(null); return; } } }
   if (!prompt && friendNear) {
-    const keys = input.isTouch ? '' : game.hangout ? ` · ${key('G')} High five · ${key('H')} Bye` : ` · ${key('H')} Hang out`;
+    const keys = input.isTouch ? '' : ` · ${key('C')} Compare heights` + (game.hangout ? ` · ${key('G')} High five · ${key('H')} Bye` : ` · ${key('H')} Hang out`);
     prompt = `${key('E')} Talk to ${looks[other.who].name}${keys}`;
     if (use()) {
       if (other.resident) other.resident.waveT = 2.2; else if (game.hangout) game.hangout.talkT = 3;
@@ -912,7 +992,7 @@ function updateCharacters(dt) {
       // look people in the eye: whoever you're talking to, or someone close in front of you
       if (P.lookT > 0) P.lookT -= dt; else P.lookEnt = null;
       let tgt = null;
-      if (P.downT <= 0 && P.getupT <= 0) {
+      if (P.downT <= 0 && P.getupT <= 0 && !game.measure) {
         if (P.lookEnt) tgt = eyeOf(P.lookEnt);
         else {
           const other = game.players[otherOf(P.who)];
@@ -939,7 +1019,7 @@ function updateCamera(dt, snap = false) {
   const inCar = !!P.car;
   const lying = P.downT > 0 || P.getupT > 0;
   const fh = lying ? 0.7 : 1.55 * (looks[P.who].height / 177);
-  const focus = inCar ? P.car.pos.clone().add(new THREE.Vector3(0, 1.4, 0)) : P.pos.clone().add(new THREE.Vector3(0, fh, 0));
+  const focus = game.measure ? game.measure.focus.clone() : inCar ? P.car.pos.clone().add(new THREE.Vector3(0, 1.4, 0)) : P.pos.clone().add(new THREE.Vector3(0, fh, 0));
   if (inCar && performance.now() - game.lastLook > 1500 && Math.abs(P.car.speed) > 2) {
     // follow the direction of travel (so the camera swings round nicely in a drift)
     const v = P.car.vel, head = P.car.speed >= 0 ? Math.atan2(v.x, v.z) : P.car.yaw;
@@ -949,7 +1029,7 @@ function updateCamera(dt, snap = false) {
   }
   const indoor = !inCar && world.interiorAt(P.pos.x, P.pos.z);
   if (indoor) game.camPitch = Math.min(game.camPitch, 0.6);
-  const dist = inCar ? 7.5 + Math.min(3, Math.abs(P.car.speed) * 0.06) : indoor ? 2.7 : 3.6;
+  const dist = game.measure ? (indoor ? 3.4 : 5.2) : inCar ? 7.5 + Math.min(3, Math.abs(P.car.speed) * 0.06) : indoor ? 2.7 : 3.6;
   const dir = new THREE.Vector3(-Math.sin(game.camYaw) * Math.cos(game.camPitch), Math.sin(game.camPitch), -Math.cos(game.camYaw) * Math.cos(game.camPitch));
   const t = rayBoxes(focus, dir, dist);
   const want = focus.clone().addScaledVector(dir, Math.max(0.6, t - 0.3));
@@ -1022,6 +1102,7 @@ function updateGame(dt) {
   if (game.hangout && !Fr.riding && !Fr.seat) people.push(Fr);
   props.update(dt, focus, game.cars, people, camera);
   updateFriend(dt, P);
+  updateMeasure(dt);
   updateCharacters(dt);
   const inApt = world.interiorAt(focus.x, focus.z);
   world.indoor = !!inApt;
@@ -1068,6 +1149,7 @@ function updateGame(dt) {
     const hb = $('tHang'), fb = $('tHi5');
     hb.textContent = game.hangout ? 'BYE' : near && Fr.resident ? 'HANG OUT' : 'CALL';
     fb.style.display = game.hangout && near && !P.seat ? 'flex' : 'none';
+    $('tHeight').style.display = near && (Fr.resident || game.hangout) && !game.measure ? 'flex' : 'none';
   }
   if (grade) { grade.uniforms.uWarm.value = world.golden * world.dayAmount; bloom.strength = 0.2 + night * 0.25; }
 }

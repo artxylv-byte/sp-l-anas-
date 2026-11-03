@@ -32,6 +32,7 @@ It runs on **Windows 10/11 PCs** and **Android phones** (and anything else with 
   - **Doors:** they follow you in and out of the apartments.
   - **Chatting:** they talk about where you are ("Let's get ice cream here! 🍦" in the Old Town, "The sunset over the Daugava is the best 🌅" on the embankment). They tell you to slow down when you drive too fast, and to be nice if you punch someone.
   - **High fives:** press **G** (or **HIGH 5**).
+  - **Compare heights:** press **C** (or **HEIGHT**) next to your friend. They stand back to back, their heights appear in cm, and they tease each other about the difference.
   - **Switching:** press **Tab** while hanging out to take control of your friend, and the other one keeps you company.
 - **Everyday life at home and around town:**
   - **Sitting:** sit on sofas, chairs and park benches (**E**).
@@ -89,6 +90,7 @@ Optimisations:
 | Interact (doors, wardrobe, shop, jobs, say hi, sit, fridge, bed) | E | USE |
 | Hang out with your friend / call them / say bye | H | CALL · HANG OUT · BYE |
 | High five (while hanging out) | G | HIGH 5 |
+| Compare heights (next to your friend) | C | HEIGHT |
 | Switch character | Tab / Q | SWITCH |
 | Pause | Esc / P | II |
 
