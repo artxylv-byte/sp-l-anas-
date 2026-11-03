@@ -60,12 +60,15 @@ function sssChunk() {
   return sss;
 }
 
-export function skinMaterial(skinInfo, tint, detail = true) {
+// `cheap` materials (crowd NPCs) use the standard PBR model without sheen / clearcoat / anisotropy
+export function skinMaterial(skinInfo, tint, detail = true, cheap = false) {
   const u = { uSSS: { value: new THREE.Color(0.9, 0.3, 0.2).multiplyScalar(0.5) }, uPores: { value: pores() }, uDetail: { value: detail ? 1 : 0 } };
-  const m = new THREE.MeshPhysicalMaterial({
-    map: texture(skinInfo), color: tint, roughness: 0.55, metalness: 0,
-    sheen: 0.22, sheenRoughness: 0.6, sheenColor: new THREE.Color('#ff9f8a'), specularIntensity: 0.42,
-  });
+  const m = cheap
+    ? new THREE.MeshStandardMaterial({ map: texture(skinInfo), color: tint, roughness: 0.58, metalness: 0 })
+    : new THREE.MeshPhysicalMaterial({
+      map: texture(skinInfo), color: tint, roughness: 0.55, metalness: 0,
+      sheen: 0.22, sheenRoughness: 0.6, sheenColor: new THREE.Color('#ff9f8a'), specularIntensity: 0.42,
+    });
   m.defines = { SKIN_SSS: '' };
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
@@ -86,16 +89,18 @@ export function skinMaterial(skinInfo, tint, detail = true) {
   return m;
 }
 
-export function eyeMaterial(info) {
+export function eyeMaterial(info, cheap = false) {
   // the eye texture's transparent part is the cornea shell: cut it out so the iris shows through
+  if (cheap) return new THREE.MeshStandardMaterial({ map: texture(info), roughness: 0.15, alphaTest: 0.2, side: THREE.DoubleSide });
   return new THREE.MeshPhysicalMaterial({ map: texture(info), roughness: 0.15, clearcoat: 1, clearcoatRoughness: 0.03, specularIntensity: 0.6, alphaTest: 0.2, side: THREE.DoubleSide });
 }
 
 // Alpha-card material for hair / brows / lashes. Textures hold luminance + alpha, colour comes from `color`.
-export function cardMaterial(info, color, { alphaTest = 0.45, aniso = 0.6, rough = 0.48 } = {}) {
+export function cardMaterial(info, color, { alphaTest = 0.45, aniso = 0.6, rough = 0.48, cheap = false } = {}) {
   // texture luminance is stored in sRGB; colours are linear → compare in linear space
   const meanLin = Math.pow(Math.max(0.2, info?.meanLum || 0.5), 2.2);
   const c = new THREE.Color(color).multiplyScalar(0.8 / meanLin);
+  if (cheap) return new THREE.MeshStandardMaterial({ map: texture(info), color: c, alphaTest, alphaToCoverage: true, side: THREE.DoubleSide, roughness: rough + 0.1, metalness: 0 });
   const m = new THREE.MeshPhysicalMaterial({
     map: texture(info), color: c, alphaTest, alphaToCoverage: true, side: THREE.DoubleSide,
     roughness: rough, metalness: 0, anisotropy: aniso, sheen: 0.25, sheenRoughness: 0.5,
@@ -105,20 +110,21 @@ export function cardMaterial(info, color, { alphaTest = 0.45, aniso = 0.6, rough
 }
 
 // Fabric with an optional "recolour" that keeps the texture's shading but changes the hue.
-export function clothMaterial(info, normalInfo, recolor, { layer = 0 } = {}) {
+export function clothMaterial(info, normalInfo, recolor, { layer = 0, cheap = false } = {}) {
   const u = {
     uRecolor: { value: new THREE.Color(recolor || '#ffffff') },
     uAmt: { value: recolor ? 1 : 0 },
     uMean: { value: Math.pow(info?.meanLum || 0.5, 2.2) },
   };
-  const m = new THREE.MeshPhysicalMaterial({
-    map: texture(info), normalMap: normalInfo ? texture(normalInfo, { srgb: false }) : null,
-    roughness: 0.82, metalness: 0, side: THREE.DoubleSide,
-    sheen: 0.4, sheenRoughness: 0.8, sheenColor: new THREE.Color(recolor || '#ffffff').lerp(new THREE.Color('#ffffff'), 0.5),
-    specularIntensity: 0.35, alphaTest: info?.alpha ? 0.5 : 0,
+  const base = {
+    map: texture(info), normalMap: normalInfo && !cheap ? texture(normalInfo, { srgb: false }) : null,
+    roughness: 0.82, metalness: 0, side: THREE.DoubleSide, alphaTest: info?.alpha ? 0.5 : 0,
     polygonOffset: layer !== 0, polygonOffsetFactor: -layer, polygonOffsetUnits: -layer * 2,
+  };
+  const m = cheap ? new THREE.MeshStandardMaterial(base) : new THREE.MeshPhysicalMaterial({
+    ...base, sheen: 0.4, sheenRoughness: 0.8, sheenColor: new THREE.Color(recolor || '#ffffff').lerp(new THREE.Color('#ffffff'), 0.5), specularIntensity: 0.35,
   });
-  if (normalInfo) m.normalScale.set(0.8, 0.8);
+  if (m.normalMap) m.normalScale.set(0.8, 0.8);
   m.onBeforeCompile = (sh) => {
     Object.assign(sh.uniforms, u);
     sh.fragmentShader = sh.fragmentShader

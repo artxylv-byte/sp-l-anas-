@@ -45,12 +45,18 @@ export class Resident {
       P.vel.set(0, 0, 0);
     }
     P.pos.y = this.apt.origin.y;
-    // a visitor in the apartment gets noticed and greeted
+    // a visitor in the apartment gets noticed and greeted – looking them in the eye, up or down
+    // depending on who is taller (and whether one of them is sitting)
     if (visitor) {
       const d = visitor.pos.distanceTo(P.pos);
       if (d < 4.5) {
-        a.lookAt = this.head.copy(visitor.pos).add(new THREE.Vector3(0, 1.6, 0));
+        a.lookAt = this.head.set(visitor.pos.x, visitor.pos.y + (visitor.human.eyeY || 1.6), visitor.pos.z);
         if (!this.greeted) { this.greeted = true; this.waveT = 2.2; if (this.onGreet) this.onGreet(); }
+        // standing and chatting: turn to face the visitor
+        if (d < 2.8 && this.mode === 'act' && this.spot.pose !== 'sit') {
+          let dy = Math.atan2(visitor.pos.x - P.pos.x, visitor.pos.z - P.pos.z) - P.yaw; dy = Math.atan2(Math.sin(dy), Math.cos(dy));
+          P.yaw += dy * Math.min(1, dt * 4);
+        }
       } else if (d > 7) this.greeted = false;
     }
     if (this.waveT > 0) { this.waveT -= dt; a.wave = this.waveT > 0.6 && this.mode === 'act'; }

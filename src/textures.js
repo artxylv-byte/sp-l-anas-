@@ -402,3 +402,197 @@ export function signTexture(text, color, bg = 'rgba(0,0,0,0)') {
     return toTex(c, { repeat: false });
   });
 }
+
+// ---------- Rīga ----------
+function roundRect(x, px, py, w, h, rad) {
+  rad = Math.min(rad, w / 2, h / 2);
+  x.beginPath();
+  x.moveTo(px + rad, py); x.lineTo(px + w - rad, py); x.quadraticCurveTo(px + w, py, px + w, py + rad);
+  x.lineTo(px + w, py + h - rad); x.quadraticCurveTo(px + w, py + h, px + w - rad, py + h);
+  x.lineTo(px + rad, py + h); x.quadraticCurveTo(px, py + h, px, py + h - rad);
+  x.lineTo(px, py + rad); x.quadraticCurveTo(px, py, px + rad, py);
+  x.closePath();
+}
+
+// Art Nouveau (Jugendstil) apartment house facade: one tile = 14 m wide × 28 m tall,
+// shop windows on the ground floor, tall (some arched) windows with stucco surrounds above.
+export function artFacadeTexture(lit = false) {
+  return cached('art' + lit, () => {
+    const W = 512, H = 1024, mx = W / 14, my = H / 28;
+    const [c, x] = makeCanvas(W, H);
+    const r = rng(lit ? 61 : 60);
+    const Y = (m) => H - m * my;
+    x.fillStyle = lit ? '#000' : '#ffffff'; x.fillRect(0, 0, W, H);
+    if (!lit) noise(x, W, H, 10, r);
+    const gf = 4.4, fh = 3.35;
+    for (let k = 0; k < 3; k++) { // ground-floor shops
+      const cx = (k + 0.5) * (14 / 3);
+      if (lit) { if (r() < 0.85) { x.fillStyle = `rgb(255,${185 + r() * 45},${110 + r() * 60})`; x.fillRect((cx - 1.7) * mx, Y(3.6), 3.4 * mx, 3.0 * my); } continue; }
+      x.fillStyle = '#4e463e'; x.fillRect((cx - 1.85) * mx, Y(3.75), 3.7 * mx, 3.3 * my);
+      const g = x.createLinearGradient(0, Y(3.6), 0, Y(0.6)); g.addColorStop(0, '#26303b'); g.addColorStop(1, '#4a5865');
+      x.fillStyle = g; x.fillRect((cx - 1.7) * mx, Y(3.6), 3.4 * mx, 3.0 * my);
+      x.fillStyle = 'rgba(255,255,255,0.13)'; x.fillRect((cx - 1.7) * mx, Y(3.6), 3.4 * mx, 0.45 * my);
+      x.fillStyle = 'rgba(220,220,220,0.6)'; x.fillRect((cx - 0.03) * mx, Y(3.6), 0.06 * mx, 3.0 * my);
+    }
+    if (!lit) {
+      x.fillStyle = 'rgba(0,0,0,0.2)'; x.fillRect(0, Y(0.6), W, 0.6 * my);
+      x.fillStyle = 'rgba(0,0,0,0.13)'; x.fillRect(0, Y(gf + 0.1), W, 0.4 * my);
+      x.fillStyle = 'rgba(255,255,255,0.4)'; x.fillRect(0, Y(gf + 0.1) - 3, W, 3);
+      for (const px of [0, 7, 14]) { x.fillStyle = 'rgba(255,255,255,0.16)'; x.fillRect(px * mx - 9, 0, 18, Y(gf + 0.3)); }
+    }
+    for (let f = 0; f < 7; f++) {
+      const y0 = gf + 0.3 + f * fh;
+      for (let k = 0; k < 4; k++) {
+        const cx = (k + 0.5) * 3.5, w = 1.3, h = 2.15, wy = y0 + 0.7;
+        if (lit) {
+          if (r() < 0.4) { x.fillStyle = r() < 0.78 ? `rgb(255,${195 + r() * 45},${120 + r() * 70})` : 'rgb(170,205,255)'; x.fillRect((cx - w / 2) * mx, Y(wy + h), w * mx, h * my); }
+          continue;
+        }
+        x.fillStyle = 'rgba(0,0,0,0.13)'; x.fillRect((cx - w / 2 - 0.2) * mx, Y(wy + h + 0.28), (w + 0.4) * mx, (h + 0.5) * my);
+        x.fillStyle = 'rgba(255,255,255,0.45)'; x.fillRect((cx - w / 2 - 0.13) * mx, Y(wy + h + 0.2), (w + 0.26) * mx, (h + 0.33) * my);
+        const g = x.createLinearGradient(0, Y(wy + h), 0, Y(wy)); g.addColorStop(0, '#1f2b36'); g.addColorStop(1, '#4b6175');
+        x.fillStyle = g;
+        if (f % 3 === 1) {
+          x.beginPath(); x.moveTo((cx - w / 2) * mx, Y(wy)); x.lineTo((cx - w / 2) * mx, Y(wy + h - w / 2));
+          x.arc(cx * mx, Y(wy + h - w / 2), (w / 2) * mx, Math.PI, 0); x.lineTo((cx + w / 2) * mx, Y(wy)); x.closePath(); x.fill();
+        } else x.fillRect((cx - w / 2) * mx, Y(wy + h), w * mx, h * my);
+        x.fillStyle = 'rgba(236,236,236,0.8)'; x.fillRect((cx - 0.03) * mx, Y(wy + h - 0.1), 0.06 * mx, (h - 0.1) * my); x.fillRect((cx - w / 2) * mx, Y(wy + h * 0.72), w * mx, 0.06 * my);
+        x.fillStyle = 'rgba(255,255,255,0.6)'; x.fillRect((cx - w / 2 - 0.22) * mx, Y(wy), (w + 0.44) * mx, 0.13 * my);
+        if (f % 2 === 0) { x.fillStyle = 'rgba(0,0,0,0.14)'; x.beginPath(); x.arc(cx * mx, Y(wy + h + 0.6), 0.24 * mx, 0, Math.PI * 2); x.fill(); }
+        if (f === 2 && k % 2 === 0) { x.fillStyle = 'rgba(40,40,40,0.55)'; x.fillRect((cx - w / 2 - 0.3) * mx, Y(wy + 0.95), (w + 0.6) * mx, 0.07 * my); for (let b = 0; b < 7; b++) x.fillRect((cx - w / 2 - 0.25 + b * 0.31) * mx, Y(wy + 0.95), 2, 0.9 * my); }
+      }
+      if (!lit) { x.fillStyle = 'rgba(0,0,0,0.07)'; x.fillRect(0, Y(y0), W, 0.14 * my); }
+    }
+    return toTex(c);
+  });
+}
+
+// Old Town (Vecrīga) merchant house facade: smaller white-framed windows, arched doors below.
+export function oldFacadeTexture(lit = false) {
+  return cached('oldfac' + lit, () => {
+    const W = 512, H = 1024, mx = W / 14, my = H / 28;
+    const [c, x] = makeCanvas(W, H);
+    const r = rng(lit ? 71 : 70);
+    const Y = (m) => H - m * my;
+    x.fillStyle = lit ? '#000' : '#ffffff'; x.fillRect(0, 0, W, H);
+    if (!lit) noise(x, W, H, 16, r);
+    for (let k = 0; k < 4; k++) { // ground floor: arched doors / small shop windows
+      const cx = (k + 0.5) * 3.5;
+      if (lit) { if (r() < 0.6) { x.fillStyle = `rgb(255,${180 + r() * 40},${100 + r() * 60})`; x.fillRect((cx - 0.8) * mx, Y(2.9), 1.6 * mx, 2.4 * my); } continue; }
+      x.fillStyle = k % 2 ? '#3a2a20' : '#2c3640';
+      x.beginPath(); x.moveTo((cx - 0.8) * mx, Y(0.2)); x.lineTo((cx - 0.8) * mx, Y(2.3)); x.arc(cx * mx, Y(2.3), 0.8 * mx, Math.PI, 0); x.lineTo((cx + 0.8) * mx, Y(0.2)); x.closePath(); x.fill();
+      x.strokeStyle = 'rgba(255,255,255,0.5)'; x.lineWidth = 4; x.stroke();
+    }
+    if (!lit) { x.fillStyle = 'rgba(0,0,0,0.18)'; x.fillRect(0, Y(0.45), W, 0.45 * my); x.fillStyle = 'rgba(0,0,0,0.1)'; x.fillRect(0, Y(3.6), W, 0.25 * my); }
+    for (let f = 0; f < 8; f++) {
+      const wy = 4.3 + f * 3.0;
+      for (let k = 0; k < 4; k++) {
+        const cx = (k + 0.5) * 3.5, w = 1.05, h = 1.55;
+        if (lit) { if (r() < 0.38) { x.fillStyle = `rgb(255,${190 + r() * 50},${110 + r() * 70})`; x.fillRect((cx - w / 2) * mx, Y(wy + h), w * mx, h * my); } continue; }
+        x.fillStyle = '#f6f3ec'; x.fillRect((cx - w / 2 - 0.12) * mx, Y(wy + h + 0.12), (w + 0.24) * mx, (h + 0.24) * my);
+        const g = x.createLinearGradient(0, Y(wy + h), 0, Y(wy)); g.addColorStop(0, '#202a33'); g.addColorStop(1, '#46586a');
+        x.fillStyle = g; x.fillRect((cx - w / 2) * mx, Y(wy + h), w * mx, h * my);
+        x.fillStyle = '#f6f3ec'; x.fillRect((cx - 0.025) * mx, Y(wy + h), 0.05 * mx, h * my); x.fillRect((cx - w / 2) * mx, Y(wy + h * 0.6), w * mx, 0.05 * my);
+        x.fillStyle = 'rgba(0,0,0,0.15)'; x.fillRect((cx - w / 2 - 0.15) * mx, Y(wy - 0.05), (w + 0.3) * mx, 0.1 * my);
+      }
+    }
+    return toTex(c);
+  });
+}
+
+export function cobbleTexture() {
+  return cached('cobble', () => {
+    const S = 512;
+    const [c, x] = makeCanvas(S, S);
+    const r = rng(17);
+    x.fillStyle = '#34312d'; x.fillRect(0, 0, S, S);
+    const rows = 22, h = S / rows;
+    for (let j = 0; j < rows; j++) {
+      let px = (j % 2) * h * 0.5;
+      const stones = [];
+      while (px < S) { const w = h * (0.85 + r() * 0.5); stones.push([px, w]); px += w; }
+      for (const [sx, w] of stones) {
+        const g = 92 + r() * 58, t = r() * 16;
+        for (const off of sx + w > S ? [0, -S] : [0]) {
+          x.fillStyle = `rgb(${g + t},${g + t * 0.55},${g - t * 0.2})`;
+          roundRect(x, sx + off + 1.5, j * h + 1.5, w - 3, h - 3, 5); x.fill();
+          x.fillStyle = 'rgba(255,255,255,0.09)'; roundRect(x, sx + off + 3, j * h + 3, w - 8, (h - 6) * 0.4, 3); x.fill();
+        }
+      }
+    }
+    return toTex(c);
+  });
+}
+
+export function pavingTexture() {
+  return cached('paving', () => {
+    const S = 256;
+    const [c, x] = makeCanvas(S, S);
+    const r = rng(23);
+    x.fillStyle = '#8f8a83'; x.fillRect(0, 0, S, S);
+    const n = 4, q = S / n;
+    for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) {
+      const g = 168 + r() * 30;
+      x.fillStyle = `rgb(${g},${g - 4},${g - 10})`; x.fillRect(i * q + 2, j * q + 2, q - 4, q - 4);
+    }
+    noise(x, S, S, 16, r);
+    return toTex(c);
+  });
+}
+
+// soft cumulus layer (tileable value-noise fbm)
+export function cloudTexture() {
+  return cached('clouds', () => {
+    const S = 256;
+    const [c, x] = makeCanvas(S, S);
+    const r = rng(91);
+    const octs = [[4, 0.5], [8, 0.26], [16, 0.14], [32, 0.1]].map(([n, a]) => [n, a, Float32Array.from({ length: n * n }, () => r())]);
+    const sm = (t) => t * t * (3 - 2 * t);
+    const img = x.createImageData(S, S);
+    for (let y = 0; y < S; y++) for (let X = 0; X < S; X++) {
+      let v = 0;
+      for (const [n, a, g] of octs) {
+        const fx = (X / S) * n, fy = (y / S) * n, ix = Math.floor(fx), iy = Math.floor(fy), tx = sm(fx - ix), ty = sm(fy - iy);
+        const at = (i, j) => g[(j % n) * n + (i % n)];
+        v += a * ((at(ix, iy) * (1 - tx) + at(ix + 1, iy) * tx) * (1 - ty) + (at(ix, iy + 1) * (1 - tx) + at(ix + 1, iy + 1) * tx) * ty);
+      }
+      const al = Math.max(0, Math.min(1, (v - 0.5) / 0.22));
+      const i = (y * S + X) * 4, sh = 205 + 50 * al;
+      img.data[i] = img.data[i + 1] = img.data[i + 2] = sh; img.data[i + 3] = al * 235;
+    }
+    x.putImageData(img, 0, 0);
+    return toTex(c);
+  });
+}
+
+// warm pool of light on the ground under a street lamp
+export function poolTexture() {
+  return cached('pool', () => {
+    const S = 128;
+    const [c, x] = makeCanvas(S, S);
+    const g = x.createRadialGradient(S / 2, S / 2, 0, S / 2, S / 2, S / 2);
+    g.addColorStop(0, 'rgba(255,214,150,0.9)'); g.addColorStop(0.45, 'rgba(255,200,130,0.35)'); g.addColorStop(1, 'rgba(255,190,120,0)');
+    x.fillStyle = g; x.fillRect(0, 0, S, S);
+    return toTex(c, { repeat: false });
+  });
+}
+
+// all the Latvian shop signs in one texture (one row each) so every sign in the city is one draw call
+export const SHOP_SIGNS = ['KAFEJNĪCA', 'APTIEKA', 'MAIZNĪCA', 'VEIKALS', 'RESTORĀNS', 'VIESNĪCA', 'GRĀMATNĪCA', 'ZIEDI',
+  'SALDĒJUMS', 'PICĒRIJA', 'SUVENĪRI', 'OPTIKA', 'KONDITOREJA', 'FRIZIERIS', 'APAVI', 'ANTIKVARIĀTS'];
+export function signAtlas() {
+  return cached('signatlas', () => {
+    const W = 1024, RH = 128, H = RH * SHOP_SIGNS.length;
+    const [c, x] = makeCanvas(W, H);
+    const panels = [['#1f3b2f', '#e8d39a'], ['#5c1a22', '#f3e6c8'], ['#1d2a44', '#ffffff'], ['#151515', '#d4a940'], ['#efe6d2', '#5c1a22'], ['#2b2b2b', '#9fe0ff']];
+    SHOP_SIGNS.forEach((t, k) => {
+      const [bg, fg] = panels[k % panels.length];
+      x.fillStyle = bg; roundRect(x, 6, k * RH + 8, W - 12, RH - 16, 18); x.fill();
+      x.strokeStyle = fg; x.lineWidth = 4; roundRect(x, 16, k * RH + 18, W - 32, RH - 36, 12); x.stroke();
+      x.font = `bold ${t.length > 10 ? 64 : 76}px Georgia, "Times New Roman", serif`;
+      x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = fg;
+      x.fillText(t, W / 2, k * RH + RH / 2 + 4);
+    });
+    return toTex(c, { repeat: false });
+  });
+}

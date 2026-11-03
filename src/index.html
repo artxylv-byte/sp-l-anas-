@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#0b0d18">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>Port Solara</title>
+<title>Rīga – Arturs &amp; Paula</title>
 <!--PWA-->
 <style>
 :root{--pink:#ff4fa3;--cyan:#40e0ff;--gold:#ffd23f;--panel:rgba(14,16,30,.82);--line:rgba(255,255,255,.12);--txt:#f4f4fa;--dim:#a9abc0}
@@ -72,6 +72,7 @@ input[type=range]{width:100%;accent-color:var(--pink);height:26px}
 #speedo{position:absolute;right:20px;bottom:18px;font-size:44px;font-weight:900;font-style:italic;text-shadow:0 2px 8px rgba(0,0,0,.8)}
 #speedo small{font-size:16px;margin-left:4px}
 #toast{position:absolute;top:30%;left:50%;transform:translateX(-50%);font-size:clamp(24px,5vw,44px);font-weight:900;font-style:italic;color:var(--gold);text-shadow:0 3px 12px rgba(0,0,0,.9);transition:opacity .4s;opacity:0;text-align:center}
+.loc{font-size:12px;font-weight:600;color:#e8eef7;opacity:.9;margin-top:2px;text-shadow:0 1px 3px #000;letter-spacing:.3px}
 #help{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);font-size:12px;color:#ddd;text-shadow:0 1px 4px #000;text-align:center;opacity:.85}
 .hudBtn{pointer-events:auto;position:absolute;top:58px;right:16px;padding:8px 12px;border-radius:10px;background:var(--panel);border:1px solid var(--line);font-size:13px}
 /* ---------- pause */
@@ -81,7 +82,7 @@ input[type=range]{width:100%;accent-color:var(--pink);height:26px}
 #touch{position:fixed;inset:0;z-index:6}
 #stickBase{position:absolute;width:130px;height:130px;border-radius:50%;background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);display:none;pointer-events:none}
 #stickKnob{position:absolute;left:37px;top:37px;width:56px;height:56px;border-radius:50%;background:rgba(255,255,255,.55)}
-.tbtns{position:absolute;right:14px;bottom:14px;display:grid;grid-template-columns:repeat(3,64px);gap:10px}
+.tbtns{position:absolute;right:14px;bottom:14px;display:grid;grid-template-columns:repeat(4,64px);gap:10px}
 .tbtn{width:64px;height:64px;border-radius:50%;background:rgba(20,22,40,.55);border:2px solid rgba(255,255,255,.4);font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;text-align:center;line-height:1.1}
 .tbtn.on{background:rgba(255,79,163,.7)}
 .tbtn.top{position:absolute;width:48px;height:48px}
@@ -93,7 +94,8 @@ input[type=range]{width:100%;accent-color:var(--pink);height:26px}
 #loading{position:fixed;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;background:#0b0d18;font-size:20px;letter-spacing:.2em}
 body.touch #minimap{left:auto;right:16px;top:96px;bottom:auto;width:120px;height:120px}
 body.touch #speedo{right:auto;left:50%;transform:translateX(-50%);bottom:110px}
-body.touch #help{display:none}
+body.touch .loc{font-size:12px;font-weight:600;color:#e8eef7;opacity:.9;margin-top:2px;text-shadow:0 1px 3px #000;letter-spacing:.3px}
+#help{display:none}
 body.touch .hudBtn{display:none}
 @media (max-width:820px){
   #panel{left:8px;right:8px;top:auto;bottom:8px;width:auto;height:52vh;border-radius:18px}
@@ -111,13 +113,13 @@ body.touch .hudBtn{display:none}
 <div id="loading">LOADING…</div>
 
 <div id="title" class="hidden">
-  <div class="logo"><h1>PORT SOLARA</h1><p>Arturs &amp; Paula</p></div>
+  <div class="logo"><h1>RĪGA</h1><p>Arturs &amp; Paula</p></div>
   <div class="menu">
     <button class="btn primary" id="bPlay">Play</button>
     <button class="btn" id="bStudio">Character Studio</button>
     <button class="btn" id="bQuality">Graphics: High</button>
   </div>
-  <div class="small">PC: WASD move · Mouse look · Shift sprint · Space jump / handbrake · F enter/exit car · E interact · Tab switch character · Esc pause<br>Phone: left thumb to move, right thumb to look, buttons for actions.</div>
+  <div class="small">PC: WASD move · Mouse look · Shift sprint · Space jump / handbrake · R or left click punch · F enter/exit car · E interact · Tab switch character · Esc pause<br>Phone: left thumb to move, right thumb to look, buttons for actions.</div>
 </div>
 
 <div id="studio" class="hidden">
@@ -132,7 +134,7 @@ body.touch .hudBtn{display:none}
 </div>
 
 <div id="hud" class="hidden">
-  <div class="hudTL"><div class="nm" id="hName">ARTURS</div><div class="money" id="hMoney">$0</div></div>
+  <div class="hudTL"><div class="nm" id="hName">ARTURS</div><div class="money" id="hMoney">€0</div><div class="loc" id="hLoc"></div></div>
   <div class="hudTR" id="hClock">17:30</div>
   <button class="hudBtn" id="hSwitch">Switch (Tab)</button>
   <div id="mission" class="hidden"></div>
@@ -140,7 +142,7 @@ body.touch .hudBtn{display:none}
   <canvas id="minimap" width="360" height="360"></canvas>
   <div id="speedo" class="hidden">0<small>km/h</small></div>
   <div id="toast"></div>
-  <div id="help">WASD move · Shift sprint · Space jump · F car · E interact · Tab switch · Esc pause</div>
+  <div id="help">WASD move · Shift sprint · Space jump · R / click punch · F car · E interact · Tab switch · Esc pause</div>
 </div>
 
 <div id="touch" class="hidden">
@@ -151,6 +153,7 @@ body.touch .hudBtn{display:none}
     <div class="tbtn" data-btn="car">CAR</div>
     <div class="tbtn" data-btn="brake">BRAKE</div>
     <div class="tbtn" data-btn="jump">JUMP</div>
+    <div class="tbtn" data-btn="punch">PUNCH</div>
     <div class="tbtn" data-btn="sprint">RUN</div>
   </div>
   <div class="tbtn top" id="touchPause" data-btn="pause">II</div>
