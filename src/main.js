@@ -3,7 +3,7 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
-import { Human, DEFAULTS, OPTIONS, PALETTES, randomAppearance } from './character.js';
+import { Human, DEFAULTS, OPTIONS, PALETTES, randomAppearance, sanitize } from './character.js';
 import { World, CURB, HALF, N, ROAD, BLOCK, CELL, BEACH_X, roadLine } from './world.js';
 import { Car, Traffic, CAR_COLORS, carLightMats } from './vehicles.js';
 import { Pedestrians } from './npcs.js';
@@ -36,11 +36,11 @@ const input = new Input(canvas);
 
 // ------------------------------------------------------------------ appearances
 const looks = {
-  arturs: { ...DEFAULTS.arturs, ...store.get('look_arturs', {}) },
-  paula: { ...DEFAULTS.paula, ...store.get('look_paula', {}) },
+  arturs: sanitize(store.get('look2_arturs', {}), DEFAULTS.arturs),
+  paula: sanitize(store.get('look2_paula', {}), DEFAULTS.paula),
 };
 looks.arturs.name = 'Arturs'; looks.paula.name = 'Paula';
-const saveLook = (who) => store.set('look_' + who, looks[who]);
+const saveLook = (who) => store.set('look2_' + who, looks[who]);
 
 // ------------------------------------------------------------------ studio scene
 const studio = { scene: new THREE.Scene(), cam: new THREE.PerspectiveCamera(32, 1, 0.05, 100), who: 'arturs', yaw: 0.35, target: new THREE.Vector3(0, 1.0, 0), dist: 4.6, wantDist: 4.6, wantY: 1.0, spin: false, from: 'title' };
@@ -419,37 +419,38 @@ function updateGame(dt) {
 }
 
 // ------------------------------------------------------------------ studio UI
+const pct = (v) => `${Math.round(v * 100)}%`;
 const CATS = {
   Body: [
+    ['choice', 'Body type', 'gender', [['male', 'Masculine'], ['female', 'Feminine']]],
     ['slider', 'Height', 'height', 145, 205, 1, (v) => `${Math.round(v)} cm`],
     ['slider', 'Body build', 'build', 0, 1, 0.01, (v) => (v < 0.3 ? 'Slim' : v < 0.65 ? 'Average' : 'Broad')],
-    ['slider', 'Muscle', 'muscle', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`],
-    ['slider', 'Shoulder width', 'shoulders', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`],
+    ['slider', 'Muscle', 'muscle', 0, 1, 0.01, pct],
+    ['slider', 'Shoulder shape', 'shoulders', 0, 1, 0.01, pct],
     ['color', 'Skin tone', 'skin', PALETTES.skin],
-    ['choice', 'Body type', 'gender', [['male', 'Masculine'], ['female', 'Feminine']]],
   ],
   Face: [
-    ['color', 'Eye colour', 'eyes', PALETTES.eyes],
-    ['slider', 'Eye size', 'eyeSize', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`],
-    ['slider', 'Nose size', 'noseSize', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`],
-    ['slider', 'Eyebrow thickness', 'brows', 0, 1, 0.01, (v) => `${Math.round(v * 100)}%`],
-    ['color', 'Lip colour', 'lipColor', PALETTES.lips],
-    ['choice', 'Facial hair', 'facialHair', OPTIONS.facialHair],
+    ['choice', 'Eye colour', 'eyes', OPTIONS.eyes],
+    ['slider', 'Eye size', 'eyeSize', 0, 1, 0.01, pct],
+    ['slider', 'Face width', 'faceWidth', 0, 1, 0.01, pct],
+    ['slider', 'Face fullness', 'faceFat', 0, 1, 0.01, pct],
+    ['slider', 'Jaw width', 'jaw', 0, 1, 0.01, pct],
+    ['slider', 'Chin', 'chin', 0, 1, 0.01, pct],
+    ['slider', 'Cheekbones', 'cheekbones', 0, 1, 0.01, pct],
+    ['slider', 'Nose size', 'noseSize', 0, 1, 0.01, pct],
+    ['slider', 'Nose width', 'noseWidth', 0, 1, 0.01, pct],
+    ['slider', 'Lips', 'lips', 0, 1, 0.01, pct],
+    ['choice', 'Eyebrows', 'browStyle', OPTIONS.browStyle],
   ],
   Hair: [
     ['choice', 'Haircut / hairstyle', 'hairStyle', OPTIONS.hairStyle],
-    ['color', 'Hair colour', 'hairColor', PALETTES.hair],
+    ['color', 'Hair colour (also eyebrows)', 'hairColor', PALETTES.hair],
     ['choice', 'Headwear', 'hat', OPTIONS.hat],
-    ['color', 'Headwear colour', 'hatColor', PALETTES.cloth],
   ],
-  Tops: [
-    ['note', 'Layering: pick an inner top AND an outer layer – both are worn at the same time (e.g. a T-shirt under an open zip hoodie).'],
-    ['choice', 'Inner top', 'top', OPTIONS.top],
-    ['color', 'Inner top colour', 'topColor', PALETTES.cloth],
-    ['choice', 'Outer layer', 'outer', OPTIONS.outer],
-    ['color', 'Outer layer colour', 'outerColor', PALETTES.cloth],
-  ],
-  Bottoms: [
+  Clothes: [
+    ['note', 'Mix and match: any top works with any bottoms and shoes. "Orig" keeps the real fabric photo; any colour re-dyes it.'],
+    ['choice', 'Top', 'top', OPTIONS.top],
+    ['color', 'Top colour', 'topColor', PALETTES.cloth],
     ['choice', 'Bottoms', 'bottom', OPTIONS.bottom],
     ['color', 'Bottoms colour', 'bottomColor', PALETTES.cloth],
     ['choice', 'Shoes', 'shoes', OPTIONS.shoes],
@@ -513,11 +514,14 @@ function renderControls() {
 function swatches(pal, L, key) {
   const frag = document.createDocumentFragment();
   for (const c of pal) {
-    const b = document.createElement('button'); b.style.background = c; if (L[key]?.toLowerCase() === c.toLowerCase()) b.className = 'on';
+    const b = document.createElement('button');
+    if (c === 'original') { b.textContent = 'Orig'; b.title = 'Original fabric'; b.style.cssText = 'width:auto;padding:0 8px;border-radius:14px;font-size:11px;background:linear-gradient(135deg,#7a8fb0,#c9b38f)'; }
+    else b.style.background = c;
+    if ((L[key] || '').toLowerCase() === c.toLowerCase()) b.className = 'on';
     b.onclick = () => { L[key] = c; queueRebuild(); renderControls(); };
     frag.appendChild(b);
   }
-  const pick = document.createElement('input'); pick.type = 'color'; pick.value = L[key] || '#ffffff'; pick.title = 'Custom colour';
+  const pick = document.createElement('input'); pick.type = 'color'; pick.value = /^#/.test(L[key] || '') ? L[key] : '#ffffff'; pick.title = 'Custom colour';
   pick.oninput = () => { L[key] = pick.value; queueRebuild(); };
   pick.onchange = () => renderControls();
   frag.appendChild(pick);
@@ -575,7 +579,8 @@ function updateStudio(dt) {
   studio.target.y += (studio.wantY - studio.target.y) * Math.min(1, dt * 6);
   studio.human.root.rotation.y = studio.yaw;
   studio.human.anim.speed = 0; studio.human.anim.sit = false; studio.human.anim.air = false;
-  studio.human.update(dt);
+  studio.human.anim.lookAtCamera = true;
+  studio.human.update(dt, studio.cam);
   const wide = innerWidth > 820;
   const portrait = !wide && innerHeight > innerWidth;
   studio.cam.aspect = innerWidth / innerHeight;
@@ -684,4 +689,4 @@ frame();
 
 // PWA offline support
 if ('serviceWorker' in navigator && location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(() => {});
-window.__ps = { game, get world() { return world; }, looks, camera };
+window.__ps = { game, get world() { return world; }, looks, camera, studio };

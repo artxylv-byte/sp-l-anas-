@@ -5,11 +5,12 @@ It runs on **Windows 10/11 PCs** and **Android phones** (and anything else with 
 
 ## Features
 - **Two playable characters.** Switch between Arturs and Paula at any time with Tab or the SWITCH button. The other one stays where you left them in the world.
+- **Realistic people.** The characters are built from **MakeHuman** models: photographic skin, real eyes, eyelashes, eyebrows, hair and fabric textures on a 163-bone skeleton. They walk, run, breathe, blink and follow you with their eyes. All of these assets are free and public domain (CC0); see *Credits* below.
 - **Character Studio.** Customise every part of each character:
-  - **Body:** height (145–205 cm), build, muscle, shoulder width, skin tone, body type
-  - **Face:** eye colour, eye size, nose size, eyebrows, lip colour, facial hair
-  - **Hair:** 11 haircuts/hairstyles (buzz, crop, quiff, curly, afro, bob, long, wavy, ponytail, bun, bald), any hair colour, caps and beanies
-  - **Layered clothing:** an inner top (T-shirt, graphic tee, long sleeve, tank, lace top, button shirt) is worn *at the same time* as an outer layer (hoodie, open zip hoodie, bomber, denim jacket, leather jacket, puffer vest). Separate bottoms and shoes. Every item comes in any colour.
+  - **Body:** body type, height (145–205 cm), build, muscle, shoulder shape, skin tone
+  - **Face:** eye colour (9 colours), eye size, face width and fullness, jaw, chin, cheekbones, nose size and width, lips, 12 eyebrow styles
+  - **Hair:** 10 hairstyles (short, crop, side part, slicked back, afro, bob, long bob, long, ponytail, braid) or bald, any hair colour, a fedora
+  - **Mix-and-match clothing:** any of 12 tops (T-shirts, shirts, blouse, jacket over shirt, suit jacket and more) with any of 8 bottoms (jeans, skinny jeans, suit trousers, overalls, shorts, skirt, leggings) and 6 pairs of shoes. Each piece keeps its original fabric photo ("Orig") or can be re-dyed in any colour.
   - **Extras:** watch, cross necklace, bracelet, earrings, glasses
   - Looks are saved automatically. You can also change clothes in-game at the **THREADS** clothing store.
 - **Port Solara city:** a downtown with glass towers, pastel neighbourhoods, parks, a beach promenade with palm trees, the ocean, and neon signs.
@@ -47,15 +48,21 @@ The game picks **Low graphics** automatically on phones. You can toggle High/Low
 ## Building from source
 ```bash
 npm install
-npm run build      # -> dist/index.html (one self-contained file)
+npm run build      # -> dist/index.html (one self-contained file, characters included)
 npm run dev        # rebuild on every change
 ```
 The code is in `src/`:
-- `character.js` – procedural 3D humans, hair and clothing layers, animation
+- `mh/` – realistic characters: body shaping, clothing/hair fitting, skin/eye/hair/fabric materials, animation
+- `character.js` – appearance options, Arturs' and Paula's defaults, random pedestrians
 - `world.js` – the city, sky, ocean and day/night cycle
 - `vehicles.js` – car models, driving and traffic
 - `npcs.js` – pedestrians
 - `main.js` – game loop, Character Studio UI, HUD, missions
 - `input.js` – keyboard, mouse and touch
 
-Built with [three.js](https://threejs.org). All textures are generated in code, so there are no image files to download.
+The character data in `assets/mh/` was generated once with `tools/build_mh_assets.py` (see the comments at the top of that file for the two free sources). You only need to rerun it if you want to add more MakeHuman clothes or hairstyles.
+
+## Credits
+- Human models, skins, eyes, eyebrows, eyelashes, hairstyles and clothing: **MakeHuman** (https://github.com/makehumancommunity/makehuman), released as **CC0 1.0** (public domain). Only the official MakeHuman system assets are used.
+- 3D engine: [three.js](https://threejs.org) (MIT).
+- Everything else (city, cars, textures, code) is made for this project.
